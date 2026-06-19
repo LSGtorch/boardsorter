@@ -1,0 +1,5 @@
+boardsorter
+boardsorter.exe
+data/
+*.log
+.DS_Store
