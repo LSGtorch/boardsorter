@@ -16,10 +16,11 @@ const (
 
 // 全局组件引用，供 startServer 使用
 var (
-	appLog        *Logger
-	appWordStore  *HotWordStore
+	appLog       *Logger
+	appWordStore *HotWordStore
 	appDelDeleter *DelayedDeleter
-	appMonitor    *Monitor
+	appMonitor   *Monitor
+	appTray      *TrayApp
 )
 
 func main() {
@@ -54,6 +55,8 @@ func main() {
 func runConsole(execDir string) {
 	cfg, log := initSystem(execDir)
 	if cfg == nil || log == nil {
+		fmt.Println("按回车键退出...")
+		fmt.Scanln()
 		os.Exit(1)
 	}
 	startServer(cfg, log)
@@ -63,17 +66,33 @@ func runConsole(execDir string) {
 func runWithTray(execDir string) {
 	cfg, log := initSystem(execDir)
 	if cfg == nil || log == nil {
+		// 启动失败，暂停让用户看到错误信息
+		fmt.Println("按回车键退出...")
+		fmt.Scanln()
 		os.Exit(1)
 	}
-	log.Info("正在初始化系统托盘...")
-	go func() {
-		time.Sleep(2 * time.Second)
-		startServer(cfg, log)
-	}()
-	log.Info("系统托盘初始化完成，程序正在后台运行...")
-	log.Info("提示: 在Windows环境下，托盘图标将显示在系统托盘中")
-	log.Info("当前运行模式: 控制台模式（无图形环境）")
-	select {}
+
+	log.Info("初始化系统托盘...")
+
+	// TrayApp.Run() 会阻塞主 goroutine
+	tray := NewTrayApp(
+		func() { startServer(cfg, log) },
+		func() {
+			log.Info("正在关闭程序...")
+			if appMonitor != nil {
+				appMonitor.Stop()
+			}
+			if appDelDeleter != nil {
+				appDelDeleter.Stop()
+			}
+			log.Info("程序已退出")
+		},
+	)
+
+	log.Info("BoardSorter 已在系统托盘运行，点击托盘图标查看日志")
+	log.Info("运行模式: 托盘模式（右键菜单可查看日志或退出）")
+	appTray = tray
+	tray.Run()
 }
 
 func initSystem(execDir string) (*Config, *Logger) {

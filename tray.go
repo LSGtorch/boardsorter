@@ -1,13 +1,16 @@
-// Package tray 提供系统托盘功能
-//
-// 在Windows环境下，此模块将创建系统托盘图标；
-// 在Linux/Mac环境下，回退到控制台日志输出。
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"sync"
+	"time"
 
+	"github.com/getlantern/systray"
 )
 
 // TrayApp 系统托盘应用
@@ -15,46 +18,62 @@ type TrayApp struct {
 	mu        sync.Mutex
 	logLines  []string
 	maxLines  int
-	log       *Logger
 	onExit    func()
 	startFunc func()
 	running   bool
 }
 
+// iconDataBase64 是托盘图标（16x16 蓝色方块 .ico，base64 编码）
+var iconDataBase64 = "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/mjL/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/5oy/wAAAAAAAAAA/5oy/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/5oy/wAAAAAAAAAAAAAAAP+aMv9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/2U0KP9lNCj/ZTQo/5oy/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+
+// iconDataRaw 解码后的图标原始数据
+var iconDataRaw []byte
+
+func init() {
+	data, _ := base64.StdEncoding.DecodeString(iconDataBase64)
+	iconDataRaw = data
+}
+
 // NewTrayApp 创建托盘应用
-func NewTrayApp(log *Logger, startFunc, onExit func()) *TrayApp {
-	t := &TrayApp{
+func NewTrayApp(startFunc, onExit func()) *TrayApp {
+	return &TrayApp{
 		logLines:  make([]string, 0, 1000),
 		maxLines:  1000,
-		log:       log,
 		onExit:    onExit,
 		startFunc: startFunc,
 		running:   true,
 	}
-	// 注册日志回调
-	log.RegisterCallback(func(level, msg string) {
-		t.addLog(level, msg)
-	})
-	return t
 }
 
-// Run 启动应用（在Windows下会显示系统托盘图标）
+// Run 启动系统托盘（阻塞，直到调用 Stop 或用户退出）
 func (t *TrayApp) Run() {
-	// 在当前环境下，使用控制台模式
-	t.log.Info("BoardSorter v3.0 已启动")
-	t.log.Info("在Windows系统下运行时，将在系统托盘显示图标")
-	t.log.Info("当前运行模式: 控制台模式")
+	systray.SetIcon(iconDataRaw)
+	systray.SetTitle("BoardSorter")
+	systray.SetTooltip("BoardSorter - 教学文件归档系统")
 
-	// 启动业务逻辑
+	menuShowLog := systray.AddMenuItem("查看日志", "在记事本显示运行日志")
+	systray.AddSeparator()
+	menuExit := systray.AddMenuItem("退出", "退出程序")
+
 	go t.startFunc()
 
-	// 保持运行
-	select {}
+	for t.running {
+		select {
+		case <-menuShowLog.ClickedCh:
+			t.showLogWindow()
+		case <-menuExit.ClickedCh:
+			t.Stop()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
 }
 
-// Stop 停止应用
+// Stop 停止托盘并退出
 func (t *TrayApp) Stop() {
+	t.mu.Lock()
 	t.running = false
+	t.mu.Unlock()
+	systray.Quit()
 	if t.onExit != nil {
 		t.onExit()
 	}
@@ -70,26 +89,46 @@ func (t *TrayApp) addLog(level, msg string) {
 	}
 }
 
-// ShowLogWindow 显示日志（在控制台输出）
-func (t *TrayApp) ShowLogWindow() {
+// showLogWindow 在记事本显示日志
+func (t *TrayApp) showLogWindow() {
 	t.mu.Lock()
 	lines := make([]string, len(t.logLines))
 	copy(lines, t.logLines)
 	t.mu.Unlock()
 
-	fmt.Println("\n===== BoardSorter 运行日志 =====")
+	tmpfile := os.TempDir() + string(os.PathSeparator) + "boardsorter_log.txt"
+	var buf bytes.Buffer
+	buf.WriteString("BoardSorter 运行日志 (最近 50 条)\n")
+	buf.WriteString(fmt.Sprintf("查看时间: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	buf.WriteString("========================================\n\n")
 	start := 0
 	if len(lines) > 50 {
 		start = len(lines) - 50
 	}
 	for _, line := range lines[start:] {
-		fmt.Println(line)
+		buf.WriteString(line + "\n")
 	}
-	fmt.Println("===== 日志显示完毕 =====")
-	fmt.Println("完整日志请查看日志文件夹中的日志文件")
+	buf.WriteString("\n========================================\n")
+	buf.WriteString(fmt.Sprintf("共 %d 条日志\n", len(lines)))
+
+	os.WriteFile(tmpfile, []byte(buf.String()), 0644)
+	if runtime.GOOS == "windows" {
+		exec.Command("notepad.exe", tmpfile).Start()
+	}
 }
 
-// UpdateStats 更新状态显示
-func (t *TrayApp) UpdateStats(hotCount, coldCount int) {
-	t.log.Info("[当前词库状态] 热词: %d 个, 冷词: %d 个", hotCount, coldCount)
+// GetRecentLogs 获取最近 N 条日志
+func (t *TrayApp) GetRecentLogs(n int) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.logLines) == 0 {
+		return nil
+	}
+	start := 0
+	if len(t.logLines) > n {
+		start = len(t.logLines) - n
+	}
+	result := make([]string, len(t.logLines)-start)
+	copy(result, t.logLines[start:])
+	return result
 }
