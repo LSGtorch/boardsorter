@@ -92,6 +92,8 @@ func runWithTray(execDir string) {
 	log.Info("BoardSorter 已在系统托盘运行，点击托盘图标查看日志")
 	log.Info("运行模式: 托盘模式（右键菜单可查看日志或退出）")
 	appTray = tray
+	// 将日志回调注册到托盘，让托盘可以显示日志
+	log.RegisterCallback(tray.addLog)
 	tray.Run()
 }
 
@@ -166,6 +168,7 @@ func startServer(cfg *Config, log *Logger) {
 		cfg.AIPrompt,
 		cfg.RetryWaitSec,
 		cfg.MaxRetries,
+		cfg.ReasoningEffort,
 	)
 
 	// 初始化内容提取器
@@ -248,7 +251,7 @@ func disableAutoStart() {
 
 func printHelp() {
 	fmt.Println("BoardSorter - 高中教学文件自动归档系统")
-	fmt.Println("版本: 3.0")
+	fmt.Println("版本: 1.1")
 	fmt.Println()
 	fmt.Println("用法:")
 	fmt.Println("  boardsorter                  启动程序（带系统托盘）")

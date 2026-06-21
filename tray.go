@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"os/exec"
 	"runtime"
@@ -40,8 +43,9 @@ func (t *TrayApp) Run() {
 	systray.Run(
 		func() {
 			// ---- onReady: systray 消息循环已启动，可以安全操作 ----
-			systray.SetTitle("BoardSorter")
-			systray.SetTooltip("BoardSorter - 教学文件归档系统")
+			systray.SetTitle("boardsorter")
+			systray.SetTooltip("boardsorter")
+			systray.SetIcon(genIcon())
 
 			menuShowLog := systray.AddMenuItem("查看日志", "用记事本显示运行日志")
 			systray.AddSeparator()
@@ -130,4 +134,18 @@ func (t *TrayApp) GetRecentLogs(n int) []string {
 	result := make([]string, len(t.logLines)-start)
 	copy(result, t.logLines[start:])
 	return result
+}
+
+// genIcon 生成一个16x16的蓝色方块作为托盘图标
+func genIcon() []byte {
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	blue := color.RGBA{0, 120, 215, 255}
+	for x := 0; x < 16; x++ {
+		for y := 0; y < 16; y++ {
+			img.Set(x, y, blue)
+		}
+	}
+	var buf bytes.Buffer
+	png.Encode(&buf, img)
+	return buf.Bytes()
 }

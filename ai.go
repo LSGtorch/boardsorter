@@ -20,24 +20,26 @@ type AIResult struct {
 
 // Client AI客户端
 type AIClient struct {
-	endpoint     string
-	apiKey       string
-	model        string
-	systemPrompt string
-	retryWait    int // 秒
-	maxRetries   int
-	httpClient   *http.Client
+	endpoint        string
+	apiKey          string
+	model           string
+	systemPrompt    string
+	retryWait       int // 秒
+	maxRetries      int
+	reasoningEffort string
+	httpClient      *http.Client
 }
 
 // NewAIClient 创建AI客户端
-func NewAIClient(endpoint, apiKey, model, systemPrompt string, retryWait, maxRetries int) *AIClient {
+func NewAIClient(endpoint, apiKey, model, systemPrompt string, retryWait, maxRetries int, reasoningEffort string) *AIClient {
 	return &AIClient{
-		endpoint:     endpoint,
-		apiKey:       apiKey,
-		model:        model,
-		systemPrompt: systemPrompt,
-		retryWait:    retryWait,
-		maxRetries:   maxRetries,
+		endpoint:        endpoint,
+		apiKey:          apiKey,
+		model:           model,
+		systemPrompt:    systemPrompt,
+		retryWait:       retryWait,
+		maxRetries:      maxRetries,
+		reasoningEffort: reasoningEffort,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -46,9 +48,10 @@ func NewAIClient(endpoint, apiKey, model, systemPrompt string, retryWait, maxRet
 
 // chatRequest OpenAI兼容的请求体
 type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
+	Model           string        `json:"model"`
+	Messages        []chatMessage `json:"messages"`
+	Temperature     float64       `json:"temperature"`
+	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
 }
 
 type chatMessage struct {
@@ -109,7 +112,8 @@ func (c *AIClient) call(content string) (*AIResult, error) {
 			{Role: "system", Content: c.systemPrompt},
 			{Role: "user", Content: content},
 		},
-		Temperature: 0.1,
+		Temperature:     0.1,
+		ReasoningEffort: c.reasoningEffort,
 	}
 
 	body, err := json.Marshal(reqBody)

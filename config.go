@@ -18,12 +18,13 @@ type Config struct {
 	LogFolder        string
 
 	// AI配置
-	AIEndpoint    string
-	APIKey        string
-	ModelName     string
-	AIPrompt      string
-	RetryWaitSec  int
-	MaxRetries    int
+	AIEndpoint       string
+	APIKey           string
+	ModelName        string
+	AIPrompt         string
+	RetryWaitSec     int
+	MaxRetries       int
+	ReasoningEffort  string
 
 	// 规则配置
 	HotDegradeDays     int
@@ -53,6 +54,7 @@ const (
 	defaultArchiveExts      = ".zip,.rar,.7z"
 	defaultAIEndpoint       = "https://api.deepseek.com/v1/chat/completions"
 	defaultModelName        = "deepseek-v4-flash"
+	defaultReasoningEffort  = "low"
 )
 
 // 默认科目
@@ -73,6 +75,7 @@ func LoadConfig(path string) (*Config, error) {
 		AIPrompt:         defaultPrompt,
 		AIEndpoint:       defaultAIEndpoint,
 		ModelName:        defaultModelName,
+		ReasoningEffort:  defaultReasoningEffort,
 	}
 
 	f, err := os.Open(path)
@@ -160,6 +163,10 @@ func (c *Config) setField(section, key, value string) error {
 		case "系统提示词":
 			if value != "" {
 				c.AIPrompt = value
+			}
+		case "推理等级":
+			if value != "" {
+				c.ReasoningEffort = value
 			}
 		case "失败重试等待秒数":
 			if n, ok := parseInt(value); ok {
@@ -281,4 +288,4 @@ func (c *Config) SubjectList() string {
 }
 
 // defaultPrompt 默认系统提示词
-const defaultPrompt = `你是中国高中教学文件归类专家。从文件名判断类别：【类别】数学,语文,英语,物理,化学,生物,无关文件,无法确定。【判断规则】1.文件名中模棱两可的词不作为判断依据，跳过继续找其他关键词。模棱两可词包括跨学科交叉词：糖类、蛋白质、油脂（化学和生物都有）、能量（物理和化学都有）、计算（数学和物理都有）等。2.只根据明确的学科关键词归类。【英语关键词】定语从句、状语从句、非谓语动词、倒装句、虚拟语气、主谓一致、被动语态、语法填空、七选五、改错、书面表达、完形填空、阅读理解、单词、句型、听力、作文模板。【各科关键词】物理：牛顿定律、加速度、受力分析、摩擦、动量、能量守恒、电磁感应、欧姆定律、电路、电场、磁场、热学、光学、声学、原子物理、物理实验。数学：三角函数、向量、导数、函数、数列、不等式、解析几何、立体几何、概率、统计、代数、方程。语文：文言文、古诗词、现代文阅读、作文、修辞、成语、文学常识。化学：元素周期表、化学反应、化学方程式、有机化学、无机化学、化学实验、化学反应与能量。生物：细胞分裂、基因、光合作用、遗传、生态系统、生物实验、有丝分裂、减数分裂。【注意事项】1.去掉年级（七年级/八年级/高一/高二/高三等）、通用词（课件/教案/试卷/练习/复习/期末/期中/月考）、文件后缀（.pptx/.docx/.pdf）后，没有明确学科关键词→"无法确定"。2.后缀永不进keywords。3."定语从句""状语从句"等英语语法术语→英语。4.糖类、蛋白质、油脂等化学/生物交叉词不作为归类依据。【输出严格JSON】{"category":"英语","keywords":["定语从句"]} 或 {"category":"无法确定","keywords":[]}`
+const defaultPrompt = `你是中国高中教学文件归类专家。从文件名判断类别：【类别】数学,语文,英语,物理,化学,生物,无关文件,无法确定。【判断规则】1.文件名中模棱两可的词不作为判断依据，跳过继续找其他关键词。模棱两可词包括跨学科交叉词：糖类、蛋白质、油脂（化学和生物都有）、能量（物理和化学都有）、计算（数学和物理都有）等。2.只根据明确的学科关键词归类。【英语关键词】定语从句、状语从句、非谓语动词、倒装句、虚拟语气、主谓一致、被动语态、语法填空、七选五、改错、书面表达、完形填空、阅读理解、单词、句型、听力、作文模板。【各科关键词】物理：牛顿定律、加速度、受力分析、摩擦、动量、能量守恒、电磁感应、欧姆定律、电路、电场、磁场、热学、光学、声学、原子物理、物理实验。数学：三角函数、向量、导数、函数、数列、不等式、解析几何、立体几何、概率、统计、代数、方程。语文：文言文、古诗词、现代文阅读、作文、修辞、成语、文学常识。化学：元素周期表、化学反应、化学方程式、有机化学、无机化学、化学实验、化学反应与能量。生物：细胞分裂、基因、光合作用、遗传、生态系统、生物实验、有丝分裂、减数分裂。【注意事项】1.去掉年级（七年级/八年级/高一/高二/高三等）、通用词（课件/教案/试卷/练习/复习/期末/期中/月考）、文件后缀（.pptx/.docx/.pdf）后，没有明确学科关键词→"无法确定"。2.后缀永不进keywords。3."定语从句""状语从句"等英语语法术语→英语。4.糖类、蛋白质、油脂等化学/生物交叉词不作为归类依据。5.文件名或正文内容大部分为英文→英语。【输出严格JSON】{"category":"英语","keywords":["定语从句"]} 或 {"category":"无法确定","keywords":[]}`
