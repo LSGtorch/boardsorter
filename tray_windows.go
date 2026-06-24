@@ -29,9 +29,6 @@ func onTrayReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("退出", "关闭 boardsorter 服务")
 
-	// 启动时主动拉一次主界面（首次启动时 UI 没在跑）
-	go launchConfigUI()
-
 	go func() {
 		for {
 			select {

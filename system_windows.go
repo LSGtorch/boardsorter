@@ -446,7 +446,7 @@ func getStartMenuStartUpPath() (string, error) {
 	return filepath.Join(programs, "StartUp"), nil
 }
 
-// CreateStartMenuShortcuts 在开始菜单的 Programs 与 StartUp 下创建 boardsorter.lnk。
+// CreateStartMenuShortcuts 在开始菜单 Programs 下创建 boardsorter.lnk。
 func CreateStartMenuShortcuts(exePath, appName string) error {
 	programsPath, err := getStartMenuProgramsPath()
 	if err != nil {
@@ -458,21 +458,10 @@ func CreateStartMenuShortcuts(exePath, appName string) error {
 	if err := createShortcut(exePath, filepath.Join(programsPath, appName+".lnk"), appName); err != nil {
 		return fmt.Errorf("failed to create programs shortcut: %w", err)
 	}
-
-	startupPath, err := getStartMenuStartUpPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(startupPath, 0755); err != nil {
-		return fmt.Errorf("failed to create startup directory %q: %w", startupPath, err)
-	}
-	if err := createShortcut(exePath, filepath.Join(startupPath, appName+".lnk"), appName); err != nil {
-		return fmt.Errorf("failed to create startup shortcut: %w", err)
-	}
 	return nil
 }
 
-// RemoveStartMenuShortcuts 删除开始菜单 Programs 与 StartUp 下的 boardsorter.lnk。
+// RemoveStartMenuShortcuts 删除开始菜单 Programs 下的 boardsorter.lnk。
 func RemoveStartMenuShortcuts(appName string) error {
 	programsPath, err := getStartMenuProgramsPath()
 	if err != nil {
@@ -481,15 +470,6 @@ func RemoveStartMenuShortcuts(appName string) error {
 	mainLink := filepath.Join(programsPath, appName+".lnk")
 	if err := os.Remove(mainLink); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove programs shortcut: %w", err)
-	}
-
-	startupPath, err := getStartMenuStartUpPath()
-	if err != nil {
-		return err
-	}
-	startupLink := filepath.Join(startupPath, appName+".lnk")
-	if err := os.Remove(startupLink); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove startup shortcut: %w", err)
 	}
 	return nil
 }

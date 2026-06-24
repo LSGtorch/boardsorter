@@ -84,10 +84,11 @@ public partial class MainWindow : Window
         try
         {
             BoardsorterLauncher.Launch();
-            // 等待 3 秒让 Go 端启动
-            for (int i = 0; i < 6; i++)
+            // 等待 5 秒让 Go 端启动并写 ipc.json
+            for (int i = 0; i < 10; i++)
             {
                 await Task.Delay(500);
+                _client.RefreshPort();
                 if (await _client.PingAsync()) return;
             }
         }
