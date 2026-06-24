@@ -33,160 +33,139 @@
                 <ListBoxItem Content="外观" />
             </ListBox>
 
-            <TabControl Grid.Column="1" x:Name="MainTabs" Margin="6"
-                        BorderThickness="0" Background="Transparent">
-                <TabControl.Template>
-                    <ControlTemplate TargetType="TabControl">
-                        <ContentPresenter Content="{TemplateBinding SelectedContent}" />
-                    </ControlTemplate>
-                </TabControl.Template>
-
-                <TabItem>
-                    <ScrollViewer>
-                        <StackPanel Spacing="8" Margin="8">
-                            <TextBlock Text="监控目录" />
-                            <TextBox Text="{Binding WatchDir}" Watermark="例如 D:\Boards\Inbox" />
-                            <TextBlock Text="归档目录" />
-                            <TextBox Text="{Binding ArchiveDir}" Watermark="例如 D:\Boards\Archive" />
-                            <TextBlock Text="学科类目 (逗号分隔)" />
-                            <TextBox Text="{Binding SubjectsText}" Watermark="数学, 物理, 化学" />
-                            <TextBlock Text="规则" Margin="0,8,0,0" />
-                            <DataGrid ItemsSource="{Binding Rules}" AutoGenerateColumns="False" Height="180">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="模式" Binding="{Binding Pattern}" Width="*" />
-                                    <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
-                                    <DataGridTextColumn Header="优先级" Binding="{Binding Priority}" Width="80" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <Button Content="新增规则" Command="{Binding AddRuleCommand}" />
-                                <Button Content="保存" Command="{Binding SaveConfigCommand}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-
-                <TabItem>
-                    <ScrollViewer>
-                        <StackPanel Spacing="8" Margin="8">
-                            <TextBlock Text="端点 (Endpoint)" />
-                            <TextBox Text="{Binding AiEndpoint}" Watermark="https://api.openai.com/v1" />
-                            <TextBlock Text="API Key" />
-                            <TextBox Text="{Binding AiApiKey}" PasswordChar="*" Watermark="sk-..." />
-                            <TextBlock Text="模型" />
-                            <TextBox Text="{Binding AiModel}" Watermark="gpt-4o-mini" />
-                            <TextBlock Text="推理等级" />
-                            <ComboBox SelectedItem="{Binding AiReasoningLevel}" HorizontalAlignment="Stretch">
-                                <ComboBoxItem>low</ComboBoxItem>
-                                <ComboBoxItem>medium</ComboBoxItem>
-                                <ComboBoxItem>high</ComboBoxItem>
-                            </ComboBox>
-                            <TextBlock Text="提示词" />
-                            <TextBox Text="{Binding AiPrompt}" AcceptsReturn="True" Height="160"
-                                     Watermark="请根据以下文件名判断学科..." />
-                            <Button Content="保存" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" />
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-
-                <TabItem>
-                    <ScrollViewer>
-                        <StackPanel Spacing="10" Margin="8">
-                            <TextBlock Text="开机自启动" FontWeight="Bold" />
-                            <CheckBox Content="启用任务管理器启动项 (HKCU\...\Run)"
-                                      IsChecked="{Binding AutoStart}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                       Text="任务管理器 → 启动 Tab 中可以看到本项，可在那里直接禁用/启用" />
-
-                            <Separator Margin="0,10,0,0" />
-                            <TextBlock Text="开始菜单快捷方式" FontWeight="Bold" Margin="0,10,0,0" />
-                            <CheckBox Content="在开始菜单创建快捷方式"
-                                      IsChecked="{Binding StartMenuShortcut}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                       Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk" />
-
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                                <Button Content="创建开始菜单快捷方式" Command="{Binding CreateStartMenuCommand}" />
-                                <Button Content="移除开始菜单快捷方式" Command="{Binding RemoveStartMenuCommand}" />
-                            </StackPanel>
-
-                            <Separator Margin="0,10,0,0" />
-                            <TextBlock Text="IPC 端口" FontWeight="Bold" Margin="0,10,0,0" />
-                            <TextBox Text="{Binding IpcPort}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                       Text="0 表示使用随机端口 (59812-59820)，写回 data/ipc.json" />
-
-                            <Button Content="保存" Command="{Binding SaveConfigCommand}"
-                                    HorizontalAlignment="Left" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding LastActivity}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="0,4,0,0" />
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-
-                <TabItem>
-                    <DockPanel Margin="8">
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
-                            <TextBox Text="{Binding TermQuery}" Width="240" Watermark="搜索词条" />
-                            <Button Content="刷新" Command="{Binding RefreshTermsCommand}" />
-                            <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
-                        </StackPanel>
-                        <DataGrid ItemsSource="{Binding Terms}" AutoGenerateColumns="False">
+            <Grid Grid.Column="1" x:Name="ContentArea" Margin="6">
+                <ScrollViewer x:Name="Page0" IsVisible="True">
+                    <StackPanel Spacing="8" Margin="8">
+                        <TextBlock Text="监控目录" />
+                        <TextBox Text="{Binding WatchDir}" Watermark="例如 D:\Boards\Inbox" />
+                        <TextBlock Text="归档目录" />
+                        <TextBox Text="{Binding ArchiveDir}" Watermark="例如 D:\Boards\Archive" />
+                        <TextBlock Text="学科类目 (逗号分隔)" />
+                        <TextBox Text="{Binding SubjectsText}" Watermark="数学, 物理, 化学" />
+                        <TextBlock Text="规则" Margin="0,8,0,0" />
+                        <DataGrid ItemsSource="{Binding Rules}" AutoGenerateColumns="False" Height="180">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="词条" Binding="{Binding Term}" Width="*" />
+                                <DataGridTextColumn Header="模式" Binding="{Binding Pattern}" Width="*" />
                                 <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
-                                <DataGridTextColumn Header="次数" Binding="{Binding Count}" Width="80" />
+                                <DataGridTextColumn Header="优先级" Binding="{Binding Priority}" Width="80" />
                             </DataGrid.Columns>
                         </DataGrid>
-                    </DockPanel>
-                </TabItem>
-
-                <TabItem>
-                    <DockPanel Margin="8">
-                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshFilesCommand}"
-                                HorizontalAlignment="Left" Margin="0,0,0,6" />
-                        <DataGrid ItemsSource="{Binding Files}" AutoGenerateColumns="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
-                                <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
-                                <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="100" />
-                                <DataGridTextColumn Header="修改时间" Binding="{Binding ModifiedAt}" Width="160" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </DockPanel>
-                </TabItem>
-
-                <TabItem>
-                    <DockPanel Margin="8">
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
-                            <Button Content="刷新" Command="{Binding RefreshLogsCommand}" />
-                            <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Content="新增规则" Command="{Binding AddRuleCommand}" />
+                            <Button Content="保存" Command="{Binding SaveConfigCommand}" />
                         </StackPanel>
-                        <ListBox ItemsSource="{Binding Logs}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="models:LogEntry">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="{Binding Time}" Width="140" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-                                        <TextBlock Text="{Binding Level}" Width="60" FontWeight="Bold" />
-                                        <TextBlock Text="{Binding Message}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </DockPanel>
-                </TabItem>
+                    </StackPanel>
+                </ScrollViewer>
 
-                <TabItem>
-                    <ScrollViewer>
-                        <StackPanel Spacing="10" Margin="8">
-                            <TextBlock Text="外观" FontWeight="Bold" FontSize="18" />
-                            <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                       Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
-                            <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
+                <ScrollViewer x:Name="Page1" IsVisible="False">
+                    <StackPanel Spacing="8" Margin="8">
+                        <TextBlock Text="端点 (Endpoint)" />
+                        <TextBox Text="{Binding AiEndpoint}" Watermark="https://api.openai.com/v1" />
+                        <TextBlock Text="API Key" />
+                        <TextBox Text="{Binding AiApiKey}" PasswordChar="*" Watermark="sk-..." />
+                        <TextBlock Text="模型" />
+                        <TextBox Text="{Binding AiModel}" Watermark="gpt-4o-mini" />
+                        <TextBlock Text="推理等级" />
+                        <ComboBox SelectedItem="{Binding AiReasoningLevel}" HorizontalAlignment="Stretch">
+                            <ComboBoxItem>low</ComboBoxItem>
+                            <ComboBoxItem>medium</ComboBoxItem>
+                            <ComboBoxItem>high</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock Text="提示词" />
+                        <TextBox Text="{Binding AiPrompt}" AcceptsReturn="True" Height="160"
+                                 Watermark="请根据以下文件名判断学科..." />
+                        <Button Content="保存" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="Page2" IsVisible="False">
+                    <StackPanel Spacing="10" Margin="8">
+                        <TextBlock Text="开机自启动" FontWeight="Bold" />
+                        <CheckBox Content="启用任务管理器启动项 (HKCU\...\Run)"
+                                  IsChecked="{Binding AutoStart}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                   Text="任务管理器 → 启动 Tab 中可以看到本项，可在那里直接禁用/启用" />
+
+                        <Separator Margin="0,10,0,0" />
+                        <TextBlock Text="开始菜单快捷方式" FontWeight="Bold" Margin="0,10,0,0" />
+                        <CheckBox Content="在开始菜单创建快捷方式"
+                                  IsChecked="{Binding StartMenuShortcut}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                   Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="创建开始菜单快捷方式" Command="{Binding CreateStartMenuCommand}" />
+                            <Button Content="移除开始菜单快捷方式" Command="{Binding RemoveStartMenuCommand}" />
                         </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-            </TabControl>
+
+                        <Separator Margin="0,10,0,0" />
+                        <TextBlock Text="IPC 端口" FontWeight="Bold" Margin="0,10,0,0" />
+                        <TextBox Text="{Binding IpcPort}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                   Text="0 表示使用随机端口 (59812-59820)，写回 data/ipc.json" />
+
+                        <Button Content="保存" Command="{Binding SaveConfigCommand}"
+                                HorizontalAlignment="Left" Margin="0,10,0,0" />
+                        <TextBlock Text="{Binding LastActivity}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <DockPanel x:Name="Page3" Margin="8" IsVisible="False">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                        <TextBox Text="{Binding TermQuery}" Width="240" Watermark="搜索词条" />
+                        <Button Content="刷新" Command="{Binding RefreshTermsCommand}" />
+                        <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
+                    </StackPanel>
+                    <DataGrid ItemsSource="{Binding Terms}" AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="词条" Binding="{Binding Term}" Width="*" />
+                            <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
+                            <DataGridTextColumn Header="次数" Binding="{Binding Count}" Width="80" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel x:Name="Page4" Margin="8" IsVisible="False">
+                    <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshFilesCommand}"
+                            HorizontalAlignment="Left" Margin="0,0,0,6" />
+                    <DataGrid ItemsSource="{Binding Files}" AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
+                            <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
+                            <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="100" />
+                            <DataGridTextColumn Header="修改时间" Binding="{Binding ModifiedAt}" Width="160" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+
+                <DockPanel x:Name="Page5" Margin="8" IsVisible="False">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                        <Button Content="刷新" Command="{Binding RefreshLogsCommand}" />
+                        <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding Logs}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="models:LogEntry">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Time}" Width="140" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                    <TextBlock Text="{Binding Level}" Width="60" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding Message}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <ScrollViewer x:Name="Page6" IsVisible="False">
+                    <StackPanel Spacing="10" Margin="8">
+                        <TextBlock Text="外观" FontWeight="Bold" FontSize="18" />
+                        <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                   Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
+                        <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </DockPanel>
 </Window>

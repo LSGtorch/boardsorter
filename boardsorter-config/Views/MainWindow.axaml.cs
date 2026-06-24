@@ -11,26 +11,32 @@ public partial class MainWindow : Window
     private readonly BoardsorterClient _client = new();
     private int _pingFailCount = 0;
     private DispatcherTimer? _pingTimer;
+    private Control[]? _pages;
 
     public MainWindow()
     {
         InitializeComponent();
-        // 侧边栏点击联动 Tab
+        _pages = new Control[] { Page0, Page1, Page2, Page3, Page4, Page5, Page6 };
         NavList.SelectionChanged += (s, e) =>
         {
-            if (MainTabs is not null)
-            {
-                MainTabs.SelectedIndex = NavList.SelectedIndex;
-            }
+            SwitchPage(NavList.SelectedIndex);
         };
         Opened += MainWindow_Opened;
     }
 
+    private void SwitchPage(int index)
+    {
+        if (_pages == null || index < 0 || index >= _pages.Length) return;
+        for (int i = 0; i < _pages.Length; i++)
+        {
+            _pages[i].IsVisible = i == index;
+        }
+    }
+
     private async void MainWindow_Opened(object? sender, EventArgs e)
     {
-        // 启动时尝试连接 Go 端，失败则自动唤起主程序
+        SwitchPage(NavList.SelectedIndex);
         await TryStartBackendAsync();
-        // 启动定时 ping：连续 3 次失败说明 Go 端退出了，GUI 也跟着退
         _pingTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(2)
@@ -55,7 +61,6 @@ public partial class MainWindow : Window
                     _pingFailCount++;
                     if (_pingFailCount >= 3)
                     {
-                        // Go 端已退出，关闭 GUI
                         _pingTimer?.Stop();
                         Close();
                     }
@@ -70,11 +75,9 @@ public partial class MainWindow : Window
         {
             return;
         }
-        // 后端没起，尝试唤起
         try
         {
             BoardsorterLauncher.Launch();
-            // 等待 5 秒让 Go 端启动并写 ipc.json
             for (int i = 0; i < 10; i++)
             {
                 await Task.Delay(500);
