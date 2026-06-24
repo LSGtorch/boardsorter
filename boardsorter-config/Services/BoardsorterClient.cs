@@ -148,14 +148,31 @@ public class BoardsorterClient
         try
         {
             var url = $"{BaseUrl}/api/terms?keyword={Uri.EscapeDataString(query ?? "")}";
-            var data = await GetDataAsync<List<TermEntry>>(url);
-            return data ?? new List<TermEntry>();
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _lastError = $"HTTP {(int)resp.StatusCode}";
+                return new List<TermEntry>();
+            }
+            var body = await resp.Content.ReadAsStringAsync();
+            var wrapper = JsonSerializer.Deserialize<ApiResponse<TermListResponse>>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            _lastError = "";
+            return wrapper?.Data?.Items ?? new List<TermEntry>();
         }
         catch (Exception ex)
         {
             _lastError = ex.Message;
             return new List<TermEntry>();
         }
+    }
+
+    private class TermListResponse
+    {
+        public List<TermEntry> Items { get; set; } = new();
+        public int Total { get; set; }
     }
 
     public async Task<List<FileMeta>> ListFilesAsync()

@@ -38,6 +38,7 @@ public class StartupConfig
     public bool AutoStart { get; set; }
     public bool StartMenuShortcut { get; set; }
     public int IpcPort { get; set; }
+    public bool DarkMode { get; set; }
 }
 
 public class TermEntry

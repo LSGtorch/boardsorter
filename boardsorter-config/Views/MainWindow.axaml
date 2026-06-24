@@ -10,7 +10,7 @@
         Width="950" Height="650"
         Title="Boardsorter 配置">
     <DockPanel>
-        <Border DockPanel.Dock="Bottom" Background="#F0F0F0" Padding="8,4">
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SystemControlBackgroundAltLowBrush}" Padding="8,4">
             <Grid ColumnDefinitions="*,*">
                 <TextBlock Grid.Column="0" Text="{Binding ConnectionStatus}" />
                 <TextBlock Grid.Column="1" Text="{Binding LastActivity}" HorizontalAlignment="Right" />
@@ -23,17 +23,25 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <ListBox Grid.Column="0" x:Name="NavList" Background="#F8F8F8" SelectedIndex="0">
+            <ListBox Grid.Column="0" x:Name="NavList" Background="{DynamicResource SystemControlBackgroundAltLowBrush}" SelectedIndex="0">
                 <ListBoxItem Content="监控配置" />
                 <ListBoxItem Content="AI 配置" />
                 <ListBoxItem Content="启动项" />
                 <ListBoxItem Content="词条库" />
                 <ListBoxItem Content="文件元数据" />
                 <ListBoxItem Content="日志" />
+                <ListBoxItem Content="外观" />
             </ListBox>
 
-            <TabControl Grid.Column="1" x:Name="MainTabs" Margin="6">
-                <TabItem Header="监控配置">
+            <TabControl Grid.Column="1" x:Name="MainTabs" Margin="6"
+                        BorderThickness="0" Background="Transparent">
+                <TabControl.Template>
+                    <ControlTemplate TargetType="TabControl">
+                        <ContentPresenter Content="{TemplateBinding SelectedContent}" />
+                    </ControlTemplate>
+                </TabControl.Template>
+
+                <TabItem>
                     <ScrollViewer>
                         <StackPanel Spacing="8" Margin="8">
                             <TextBlock Text="监控目录" />
@@ -58,7 +66,7 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="AI 配置">
+                <TabItem>
                     <ScrollViewer>
                         <StackPanel Spacing="8" Margin="8">
                             <TextBlock Text="端点 (Endpoint)" />
@@ -81,21 +89,21 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="启动项">
+                <TabItem>
                     <ScrollViewer>
                         <StackPanel Spacing="10" Margin="8">
                             <TextBlock Text="开机自启动" FontWeight="Bold" />
                             <CheckBox Content="启用任务管理器启动项 (HKCU\...\Run)"
                                       IsChecked="{Binding AutoStart}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11"
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
                                        Text="任务管理器 → 启动 Tab 中可以看到本项，可在那里直接禁用/启用" />
 
                             <Separator Margin="0,10,0,0" />
                             <TextBlock Text="开始菜单快捷方式" FontWeight="Bold" Margin="0,10,0,0" />
                             <CheckBox Content="在开始菜单创建快捷方式"
                                       IsChecked="{Binding StartMenuShortcut}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11"
-                                       Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk 和 ...\StartUp\boardsorter.lnk" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                       Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                                 <Button Content="创建开始菜单快捷方式" Command="{Binding CreateStartMenuCommand}" />
@@ -105,21 +113,22 @@
                             <Separator Margin="0,10,0,0" />
                             <TextBlock Text="IPC 端口" FontWeight="Bold" Margin="0,10,0,0" />
                             <TextBox Text="{Binding IpcPort}" />
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11"
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
                                        Text="0 表示使用随机端口 (59812-59820)，写回 data/ipc.json" />
 
                             <Button Content="保存" Command="{Binding SaveConfigCommand}"
                                     HorizontalAlignment="Left" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding LastActivity}" Foreground="Gray" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding LastActivity}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="词条库">
+                <TabItem>
                     <DockPanel Margin="8">
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
                             <TextBox Text="{Binding TermQuery}" Width="240" Watermark="搜索词条" />
-                            <Button Content="刷新" Command="{Binding RefreshAllCommand}" />
+                            <Button Content="刷新" Command="{Binding RefreshTermsCommand}" />
+                            <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
                         </StackPanel>
                         <DataGrid ItemsSource="{Binding Terms}" AutoGenerateColumns="False">
                             <DataGrid.Columns>
@@ -131,9 +140,9 @@
                     </DockPanel>
                 </TabItem>
 
-                <TabItem Header="文件元数据">
+                <TabItem>
                     <DockPanel Margin="8">
-                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshAllCommand}"
+                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshFilesCommand}"
                                 HorizontalAlignment="Left" Margin="0,0,0,6" />
                         <DataGrid ItemsSource="{Binding Files}" AutoGenerateColumns="False">
                             <DataGrid.Columns>
@@ -146,15 +155,17 @@
                     </DockPanel>
                 </TabItem>
 
-                <TabItem Header="日志">
+                <TabItem>
                     <DockPanel Margin="8">
-                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshAllCommand}"
-                                HorizontalAlignment="Left" Margin="0,0,0,6" />
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                            <Button Content="刷新" Command="{Binding RefreshLogsCommand}" />
+                            <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" />
+                        </StackPanel>
                         <ListBox ItemsSource="{Binding Logs}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="models:LogEntry">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="{Binding Time}" Width="140" Foreground="Gray" />
+                                        <TextBlock Text="{Binding Time}" Width="140" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                                         <TextBlock Text="{Binding Level}" Width="60" FontWeight="Bold" />
                                         <TextBlock Text="{Binding Message}" />
                                     </StackPanel>
@@ -162,6 +173,18 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </DockPanel>
+                </TabItem>
+
+                <TabItem>
+                    <ScrollViewer>
+                        <StackPanel Spacing="10" Margin="8">
+                            <TextBlock Text="外观" FontWeight="Bold" FontSize="18" />
+                            <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                       Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
+                            <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </TabItem>
             </TabControl>
         </Grid>

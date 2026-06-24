@@ -1,6 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Styling;
 using BoardsorterConfig.Models;
 using BoardsorterConfig.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,6 +14,7 @@ namespace BoardsorterConfig.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly BoardsorterClient _client = new();
+    private Timer? _autoRefreshTimer;
 
     [ObservableProperty]
     private string _connectionStatus = "未连接";
@@ -53,6 +57,41 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _startMenuShortcut;
 
+    [ObservableProperty]
+    private bool _darkMode;
+
+    partial void OnDarkModeChanged(bool value)
+    {
+        var app = Application.Current;
+        if (app is not null)
+        {
+            app.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+    }
+
+    [ObservableProperty]
+    private bool _autoRefresh;
+
+    partial void OnAutoRefreshChanged(bool value)
+    {
+        if (value)
+        {
+            _autoRefreshTimer = new Timer(_ =>
+            {
+                _ = Task.Run(async () =>
+                {
+                    await RefreshTermsAsync();
+                    await RefreshLogsAsync();
+                });
+            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            _autoRefreshTimer?.Dispose();
+            _autoRefreshTimer = null;
+        }
+    }
+
     public ObservableCollection<TermEntry> Terms { get; } = new();
 
     [ObservableProperty]
@@ -94,30 +133,47 @@ public partial class MainWindowViewModel : ViewModelBase
             AutoStart = cfg.Startup.AutoStart;
             StartMenuShortcut = cfg.Startup.StartMenuShortcut;
             IpcPort = cfg.Startup.IpcPort;
+            DarkMode = cfg.Startup.DarkMode;
         }
 
+        await RefreshTermsAsync();
+        await RefreshFilesAsync();
+        await RefreshLogsAsync();
+
+        LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
+    }
+
+    [RelayCommand]
+    private async Task RefreshTermsAsync()
+    {
         var terms = await _client.SearchTermsAsync(TermQuery);
         Terms.Clear();
         foreach (var t in terms)
         {
             Terms.Add(t);
         }
+    }
 
+    [RelayCommand]
+    private async Task RefreshFilesAsync()
+    {
         var files = await _client.ListFilesAsync();
         Files.Clear();
         foreach (var f in files)
         {
             Files.Add(f);
         }
+    }
 
+    [RelayCommand]
+    private async Task RefreshLogsAsync()
+    {
         var logs = await _client.GetLogsAsync();
         Logs.Clear();
         foreach (var l in logs)
         {
             Logs.Add(l);
         }
-
-        LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
     }
 
     [RelayCommand]
@@ -145,7 +201,8 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 AutoStart = AutoStart,
                 StartMenuShortcut = StartMenuShortcut,
-                IpcPort = IpcPort
+                IpcPort = IpcPort,
+                DarkMode = DarkMode
             }
         };
         var ok = await _client.UpdateConfigAsync(cfg);

@@ -407,8 +407,9 @@ func handleTerms(w http.ResponseWriter, r *http.Request) {
 
 	all := ipcTermDB.GetAllTerms()
 	type termItem struct {
-		Term     string                 `json:"term"`
-		Subjects map[string]interface{} `json:"subjects"`
+		Term    string `json:"term"`
+		Subject string `json:"subject"`
+		Count   int    `json:"count"`
 	}
 	results := make([]termItem, 0, len(all))
 	kwLower := strings.ToLower(keyword)
@@ -416,21 +417,24 @@ func handleTerms(w http.ResponseWriter, r *http.Request) {
 		if keyword != "" && !strings.Contains(strings.ToLower(term), kwLower) {
 			continue
 		}
-		if subject != "" {
-			if _, ok := subjectMap[subject]; !ok {
+		for subj, info := range subjectMap {
+			if subject != "" && subj != subject {
 				continue
 			}
+			results = append(results, termItem{
+				Term:    term,
+				Subject: subj,
+				Count:   info.Freq,
+			})
 		}
-		subjects := make(map[string]interface{}, len(subjectMap))
-		for s, info := range subjectMap {
-			subjects[s] = map[string]interface{}{
-				"freq":       info.Freq,
-				"last_match": info.LastMatch,
-			}
-		}
-		results = append(results, termItem{Term: term, Subjects: subjects})
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].Term < results[j].Term })
+	// 按词频倒序，词频相同按词条字母序
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Count != results[j].Count {
+			return results[i].Count > results[j].Count
+		}
+		return results[i].Term < results[j].Term
+	})
 	if len(results) > limit {
 		results = results[:limit]
 	}
