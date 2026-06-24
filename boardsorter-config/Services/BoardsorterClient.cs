@@ -187,4 +187,21 @@ public class BoardsorterClient
             return new List<LogEntry>();
         }
     }
+
+    public async Task<bool> SetSystemStartMenuAsync(bool enabled)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new { enabled });
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var resp = await _http.PostAsync($"{BaseUrl}/api/system/startmenu", content);
+            _lastError = resp.IsSuccessStatusCode ? "" : $"HTTP {(int)resp.StatusCode}";
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _lastError = ex.Message;
+            return false;
+        }
+    }
 }

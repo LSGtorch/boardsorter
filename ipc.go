@@ -110,6 +110,7 @@ func StartIPCServer(
 	mux.HandleFunc("/api/stats", corsHandler(handleStats))
 	mux.HandleFunc("/api/decay", corsHandler(handleDecay))
 	mux.HandleFunc("/api/stop", corsHandler(handleStop))
+	mux.HandleFunc("/api/system/startmenu", corsHandler(handleSystemStartMenu))
 
 	// 顺序尝试候选端口
 	var listener net.Listener
@@ -526,4 +527,63 @@ func handleStop(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		onStop()
 	}()
+}
+
+// POST /api/system/startmenu
+// 请求 body: {"enabled": true} 或 {"enabled": false}
+// enabled=true  时调用 CreateStartMenuShortcuts（已存在则跳过）
+// enabled=false 时调用 RemoveStartMenuShortcuts（幂等）
+func handleSystemStartMenu(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "JSON 解析失败: "+err.Error())
+		return
+	}
+
+	if req.Enabled {
+		// 已存在则跳过 -> 幂等
+		if hasStartMenuShortcuts(appDisplayName) {
+			if ipcLog != nil {
+				ipcLog.Info("[IPC] 开始菜单快捷方式已存在，跳过创建")
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": true, "existed": true})
+			return
+		}
+		execPath, err := os.Executable()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "获取 exe 路径失败: "+err.Error())
+			return
+		}
+		if err := CreateStartMenuShortcuts(execPath, appDisplayName); err != nil {
+			if ipcLog != nil {
+				ipcLog.Warn("[IPC] 创建开始菜单快捷方式失败: %v", err)
+			}
+			writeErr(w, http.StatusInternalServerError, "创建开始菜单快捷方式失败: "+err.Error())
+			return
+		}
+		if ipcLog != nil {
+			ipcLog.Info("[IPC] 已创建开始菜单快捷方式: %s", execPath)
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": true, "existed": false})
+		return
+	}
+
+	// enabled=false
+	if err := RemoveStartMenuShortcuts(appDisplayName); err != nil {
+		if ipcLog != nil {
+			ipcLog.Warn("[IPC] 移除开始菜单快捷方式失败: %v", err)
+		}
+		writeErr(w, http.StatusInternalServerError, "移除开始菜单快捷方式失败: "+err.Error())
+		return
+	}
+	if ipcLog != nil {
+		ipcLog.Info("[IPC] 已移除开始菜单快捷方式")
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
 }

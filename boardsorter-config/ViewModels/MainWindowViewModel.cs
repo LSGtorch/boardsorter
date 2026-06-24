@@ -166,4 +166,18 @@ public partial class MainWindowViewModel : ViewModelBase
             Rules.Remove(item);
         }
     }
+
+    [RelayCommand]
+    private async Task CreateStartMenuAsync()
+    {
+        var ok = await _client.SetSystemStartMenuAsync(true);
+        LastActivity = ok ? "已创建开始菜单快捷方式" : $"创建失败: {_client.LastError}";
+    }
+
+    [RelayCommand]
+    private async Task RemoveStartMenuAsync()
+    {
+        var ok = await _client.SetSystemStartMenuAsync(false);
+        LastActivity = ok ? "已移除开始菜单快捷方式" : $"移除失败: {_client.LastError}";
+    }
 }
