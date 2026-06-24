@@ -23,8 +23,6 @@ public partial class MainWindow : Window
                 MainTabs.SelectedIndex = NavList.SelectedIndex;
             }
         };
-        // 点 X 关闭 → 隐藏到托盘（Go 端托盘还在跑）
-        Closing += MainWindow_Closing;
         Opened += MainWindow_Opened;
     }
 
@@ -59,19 +57,11 @@ public partial class MainWindow : Window
                     {
                         // Go 端已退出，关闭 GUI
                         _pingTimer?.Stop();
-                        // 直接退出，绕过 Closing 拦截
-                        Environment.Exit(0);
+                        Close();
                     }
                 }
             });
         });
-    }
-
-    private void MainWindow_Closing(object? sender, WindowClosingEventArgs e)
-    {
-        // 拦截关闭，隐藏窗口到托盘（Go 端托盘还在运行）
-        e.Cancel = true;
-        Hide();
     }
 
     private async Task TryStartBackendAsync()
