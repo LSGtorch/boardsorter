@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,14 @@ type Config struct {
 	WatchFolder  string
 	ScanInterval int
 
+	// IPC配置
+	IPCPort         int    // 0=随机，>0=固定
+	IPCBindHost     string // 默认 127.0.0.1
+
+	// 启动项配置
+	AutoStart        bool // 开机自启动
+	StartMenuLink    bool // 开始菜单快捷方式
+
 	// 派生字段
 	ReadableExtList []string
 	ArchiveExtList  []string
@@ -53,6 +62,7 @@ const (
 	defaultModelName        = "deepseek-v4-flash"
 	defaultReasoningEffort  = "low"
 	defaultTermMaxIdleDays  = 30
+	defaultIPCBindHost      = "127.0.0.1"
 )
 
 // 默认科目
@@ -73,6 +83,7 @@ func LoadConfig(path string) (*Config, error) {
 		AIEndpoint:       defaultAIEndpoint,
 		ModelName:        defaultModelName,
 		ReasoningEffort:  defaultReasoningEffort,
+		IPCBindHost:      defaultIPCBindHost,
 	}
 
 	f, err := os.Open(path)
@@ -200,6 +211,30 @@ func (c *Config) setField(section, key, value string) error {
 				c.ScanInterval = n
 			}
 		}
+
+	case "IPC配置":
+		switch key {
+		case "IPC端口":
+			if n, ok := parseInt(value); ok {
+				c.IPCPort = n
+			}
+		case "IPC绑定地址":
+			if value != "" {
+				c.IPCBindHost = value
+			}
+		}
+
+	case "启动配置":
+		switch key {
+		case "开机自启动":
+			if b, ok := parseBool(value); ok {
+				c.AutoStart = b
+			}
+		case "开始菜单快捷方式":
+			if b, ok := parseBool(value); ok {
+				c.StartMenuLink = b
+			}
+		}
 	}
 
 	return nil
@@ -229,6 +264,17 @@ func parseInt(s string) (int, bool) {
 	return result, true
 }
 
+func parseBool(s string) (bool, bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "true", "yes", "1", "on", "是", "启用", "开":
+		return true, true
+	case "false", "no", "0", "off", "否", "禁用", "关":
+		return false, true
+	}
+	return false, false
+}
+
 // Validate 验证配置是否完整
 func (c *Config) Validate() error {
 	if c.WatchFolder == "" {
@@ -248,6 +294,9 @@ func (c *Config) Validate() error {
 	}
 	if c.LogFolder == "" {
 		c.LogFolder = filepath.Join(c.ArchiveRoot, "程序日志")
+	}
+	if c.IPCPort == 0 {
+		// 0 表示随机端口，合法
 	}
 	return nil
 }
@@ -278,6 +327,141 @@ func (c *Config) SubjectList() string {
 		parts[i] = fmt.Sprintf("%q", s)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// SaveConfig 把 Config 重新序列化成 INI 格式写回 path。
+// 保留所有注释、分节顺序和原有顺序；如果 cfg 中某字段值为空，则跳过该字段保留原行不变。
+func SaveConfig(path string, cfg *Config) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("无法打开配置文件 %s: %w", path, err)
+	}
+
+	var lines []string
+	currentSection := ""
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			currentSection = trimmed[1 : len(trimmed)-1]
+			lines = append(lines, line)
+			continue
+		}
+
+		if trimmed == "" || strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "#") {
+			lines = append(lines, line)
+			continue
+		}
+
+		eqIdx := strings.Index(trimmed, "=")
+		if eqIdx < 0 {
+			lines = append(lines, line)
+			continue
+		}
+		key := strings.TrimSpace(trimmed[:eqIdx])
+
+		newValue, hasField := configValueString(currentSection, key, cfg)
+		if !hasField || newValue == "" {
+			// 不识别或值为空：保留原行
+			lines = append(lines, line)
+			continue
+		}
+
+		// 保留前导缩进
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		lines = append(lines, indent+key+" = "+newValue)
+	}
+	if err := scanner.Err(); err != nil {
+		f.Close()
+		return fmt.Errorf("读取配置文件出错: %w", err)
+	}
+	f.Close()
+
+	out, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("无法写入配置文件 %s: %w", path, err)
+	}
+	defer out.Close()
+
+	writer := bufio.NewWriter(out)
+	for _, l := range lines {
+		if _, err := writer.WriteString(l + "\n"); err != nil {
+			return err
+		}
+	}
+	return writer.Flush()
+}
+
+// configValueString 根据 section/key 返回 cfg 中对应字段的字符串值。
+// 返回 (值, 是否识别)。识别但值为空时返回 ("", true)，由调用方决定如何处理。
+func configValueString(section, key string, cfg *Config) (string, bool) {
+	switch section {
+	case "路径配置":
+		switch key {
+		case "归档根目录":
+			return cfg.ArchiveRoot, true
+		case "科目文件夹列表":
+			return strings.Join(cfg.SubjectFolders, ", "), true
+		case "无关文件夹":
+			return cfg.IrrelevantFolder, true
+		case "无法确定类别文件夹", "无法确定文件夹":
+			return cfg.UncertainFolder, true
+		case "日志文件夹":
+			return cfg.LogFolder, true
+		}
+	case "AI配置":
+		switch key {
+		case "AI接口地址":
+			return cfg.AIEndpoint, true
+		case "API密钥":
+			return cfg.APIKey, true
+		case "模型名称":
+			return cfg.ModelName, true
+		case "系统提示词":
+			return cfg.AIPrompt, true
+		case "推理等级":
+			return cfg.ReasoningEffort, true
+		case "失败重试等待秒数":
+			return strconv.Itoa(cfg.RetryWaitSec), true
+		case "最大重试次数":
+			return strconv.Itoa(cfg.MaxRetries), true
+		}
+	case "规则配置":
+		switch key {
+		case "下载源文件保留小时数":
+			return strconv.Itoa(cfg.SourceRetainHour), true
+		case "词条最大空闲天数":
+			return strconv.Itoa(cfg.TermMaxIdleDays), true
+		case "可读文档扩展名":
+			return cfg.ReadableExts, true
+		case "压缩包扩展名":
+			return cfg.ArchiveExts, true
+		}
+	case "监控配置":
+		switch key {
+		case "要监控的下载文件夹":
+			return cfg.WatchFolder, true
+		case "扫描间隔秒数":
+			return strconv.Itoa(cfg.ScanInterval), true
+		}
+	case "IPC配置":
+		switch key {
+		case "IPC端口":
+			return strconv.Itoa(cfg.IPCPort), true
+		case "IPC绑定地址":
+			return cfg.IPCBindHost, true
+		}
+	case "启动配置":
+		switch key {
+		case "开机自启动":
+			return strconv.FormatBool(cfg.AutoStart), true
+		case "开始菜单快捷方式":
+			return strconv.FormatBool(cfg.StartMenuLink), true
+		}
+	}
+	return "", false
 }
 
 // defaultPrompt 默认系统提示词

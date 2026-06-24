@@ -1,0 +1,145 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:BoardsorterConfig.ViewModels"
+        xmlns:models="using:BoardsorterConfig.Models"
+        mc:Ignorable="d" d:DesignWidth="950" d:DesignHeight="650"
+        x:Class="BoardsorterConfig.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="950" Height="650"
+        Title="Boardsorter 配置">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#F0F0F0" Padding="8,4">
+            <Grid ColumnDefinitions="*,*">
+                <TextBlock Grid.Column="0" Text="{Binding ConnectionStatus}" />
+                <TextBlock Grid.Column="1" Text="{Binding LastActivity}" HorizontalAlignment="Right" />
+            </Grid>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="180" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ListBox Grid.Column="0" x:Name="NavList" Background="#F8F8F8" SelectedIndex="0">
+                <ListBoxItem Content="监控配置" />
+                <ListBoxItem Content="AI 配置" />
+                <ListBoxItem Content="启动项" />
+                <ListBoxItem Content="词条库" />
+                <ListBoxItem Content="文件元数据" />
+                <ListBoxItem Content="日志" />
+            </ListBox>
+
+            <TabControl Grid.Column="1" x:Name="MainTabs" Margin="6">
+                <TabItem Header="监控配置" IsVisible="False">
+                    <ScrollViewer>
+                        <StackPanel Spacing="8" Margin="8">
+                            <TextBlock Text="监控目录" />
+                            <TextBox Text="{Binding WatchDir}" Watermark="例如 D:\Boards\Inbox" />
+                            <TextBlock Text="归档目录" />
+                            <TextBox Text="{Binding ArchiveDir}" Watermark="例如 D:\Boards\Archive" />
+                            <TextBlock Text="学科类目 (逗号分隔)" />
+                            <TextBox Text="{Binding SubjectsText}" Watermark="数学, 物理, 化学" />
+                            <TextBlock Text="规则" Margin="0,8,0,0" />
+                            <DataGrid ItemsSource="{Binding Rules}" AutoGenerateColumns="False" Height="180">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="模式" Binding="{Binding Pattern}" Width="*" />
+                                    <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
+                                    <DataGridTextColumn Header="优先级" Binding="{Binding Priority}" Width="80" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="新增规则" Command="{Binding AddRuleCommand}" />
+                                <Button Content="保存" Command="{Binding SaveConfigCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="AI 配置" IsVisible="False">
+                    <ScrollViewer>
+                        <StackPanel Spacing="8" Margin="8">
+                            <TextBlock Text="端点 (Endpoint)" />
+                            <TextBox Text="{Binding AiEndpoint}" Watermark="https://api.openai.com/v1" />
+                            <TextBlock Text="API Key" />
+                            <TextBox Text="{Binding AiApiKey}" PasswordChar="*" Watermark="sk-..." />
+                            <TextBlock Text="模型" />
+                            <TextBox Text="{Binding AiModel}" Watermark="gpt-4o-mini" />
+                            <TextBlock Text="推理等级" />
+                            <ComboBox SelectedItem="{Binding AiReasoningLevel}" HorizontalAlignment="Stretch">
+                                <ComboBoxItem>low</ComboBoxItem>
+                                <ComboBoxItem>medium</ComboBoxItem>
+                                <ComboBoxItem>high</ComboBoxItem>
+                            </ComboBox>
+                            <TextBlock Text="提示词" />
+                            <TextBox Text="{Binding AiPrompt}" AcceptsReturn="True" Height="160"
+                                     Watermark="请根据以下文件名判断学科..." />
+                            <Button Content="保存" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="启动项" IsVisible="False">
+                    <StackPanel Spacing="10" Margin="8">
+                        <CheckBox Content="开机自启" IsChecked="{Binding AutoStart}" />
+                        <CheckBox Content="开始菜单快捷方式" IsChecked="{Binding StartMenuShortcut}" />
+                        <TextBlock Text="IPC 端口" />
+                        <TextBox Text="{Binding IpcPort}" />
+                        <Button Content="保存" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="词条库" IsVisible="False">
+                    <DockPanel Margin="8">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+                            <TextBox Text="{Binding TermQuery}" Width="240" Watermark="搜索词条" />
+                            <Button Content="刷新" Command="{Binding RefreshAllCommand}" />
+                        </StackPanel>
+                        <DataGrid ItemsSource="{Binding Terms}" AutoGenerateColumns="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="词条" Binding="{Binding Term}" Width="*" />
+                                <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
+                                <DataGridTextColumn Header="次数" Binding="{Binding Count}" Width="80" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <TabItem Header="文件元数据" IsVisible="False">
+                    <DockPanel Margin="8">
+                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshAllCommand}"
+                                HorizontalAlignment="Left" Margin="0,0,0,6" />
+                        <DataGrid ItemsSource="{Binding Files}" AutoGenerateColumns="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
+                                <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
+                                <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="100" />
+                                <DataGridTextColumn Header="修改时间" Binding="{Binding ModifiedAt}" Width="160" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <TabItem Header="日志" IsVisible="False">
+                    <DockPanel Margin="8">
+                        <Button DockPanel.Dock="Top" Content="刷新" Command="{Binding RefreshAllCommand}"
+                                HorizontalAlignment="Left" Margin="0,0,0,6" />
+                        <ListBox ItemsSource="{Binding Logs}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="models:LogEntry">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Time}" Width="140" Foreground="Gray" />
+                                        <TextBlock Text="{Binding Level}" Width="60" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Message}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</Window>

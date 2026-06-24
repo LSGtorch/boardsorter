@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -16,12 +17,11 @@ const (
 
 // 全局组件引用，供 startServer 使用
 var (
-	appLog       *Logger
-	appTermDB    *TermDB
-	appMetadata  *FileMetadata
+	appLog        *Logger
+	appTermDB     *TermDB
+	appMetadata   *FileMetadata
 	appDelDeleter *DelayedDeleter
-	appMonitor   *Monitor
-	appTray      *TrayApp
+	appMonitor    *Monitor
 )
 
 func main() {
@@ -37,64 +37,33 @@ func main() {
 		case "--help", "-h":
 			printHelp()
 			return
-		case "--autostart", "-a":
-			enableAutoStart()
+		case "--no-ipc":
+			// 调试模式：跳过 IPC 服务
+			runConsole(execDir, true)
 			return
-		case "--no-autostart", "-na":
-			disableAutoStart()
+		case "--cleanup-system":
+			// 清理模式：删除自启动 + 快捷方式后退出
+			cleanupSystem()
 			return
 		case "--console", "-c":
-			runConsole(execDir)
+			runConsole(execDir, false)
 			return
 		}
 	}
 
-	// 默认带托盘运行
-	runWithTray(execDir)
+	// 默认控制台模式运行
+	runConsole(execDir, false)
 }
 
-func runConsole(execDir string) {
+func runConsole(execDir string, noIPC bool) {
 	cfg, log := initSystem(execDir)
 	if cfg == nil || log == nil {
 		fmt.Println("按回车键退出...")
 		fmt.Scanln()
 		os.Exit(1)
 	}
-	startServer(cfg, log)
+	startServer(cfg, log, noIPC)
 	select {} // 保持运行
-}
-
-func runWithTray(execDir string) {
-	cfg, log := initSystem(execDir)
-	if cfg == nil || log == nil {
-		fmt.Println("按回车键退出...")
-		fmt.Scanln()
-		os.Exit(1)
-	}
-
-	log.Info("初始化系统托盘...")
-
-	// TrayApp.Run() 会阻塞主 goroutine
-	tray := NewTrayApp(
-		func() { startServer(cfg, log) },
-		func() {
-			log.Info("正在关闭程序...")
-			if appMonitor != nil {
-				appMonitor.Stop()
-			}
-			if appDelDeleter != nil {
-				appDelDeleter.Stop()
-			}
-			log.Info("程序已退出")
-		},
-	)
-
-	log.Info("boardsorter 已在系统托盘运行，点击托盘图标查看日志")
-	log.Info("运行模式: 托盘模式（右键菜单可查看日志或退出）")
-	appTray = tray
-	// 将日志回调注册到托盘，让托盘可以显示日志
-	log.RegisterCallback(tray.addLog)
-	tray.Run()
 }
 
 func initSystem(execDir string) (*Config, *Logger) {
@@ -143,7 +112,7 @@ func initSystem(execDir string) (*Config, *Logger) {
 	return cfg, log
 }
 
-func startServer(cfg *Config, log *Logger) {
+func startServer(cfg *Config, log *Logger, noIPC bool) {
 	execDir, _ := os.Getwd()
 
 	// 初始化数据存储
@@ -254,27 +223,147 @@ func startServer(cfg *Config, log *Logger) {
 		}
 	}()
 
-	log.Info("boardsorter 服务已完全启动")
-}
+	// 根据配置幂等应用自启动 / 开始菜单快捷方式
+	applySystemSettings(cfg, log)
 
-// enableAutoStart 启用开机自启（Windows）
-func enableAutoStart() {
-	execPath, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "获取程序路径失败: %v\n", err)
-		os.Exit(1)
+	log.Info("boardsorter 服务已完全启动")
+
+	// 启动 IPC HTTP 服务
+	if noIPC {
+		log.Info("已通过 --no-ipc 跳过 IPC 服务启动")
+		return
 	}
 
-	fmt.Printf("启用开机自启: %s\n", execPath)
-	fmt.Println("请在Windows环境下运行以下命令或手动添加开机启动项:")
-	fmt.Printf("  reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v boardsorter /t REG_SZ /d \"%s\" /f\n", execPath)
-	fmt.Println("或者将程序快捷方式放入: %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup")
+	triggerManualScan = func() (int, error) {
+		n0, _ := metadata.GetStats()
+		class.ScanSubjectFolders(cfg.SubjectFolders)
+		n1, _ := metadata.GetStats()
+		return n1 - n0, nil
+	}
+	onStop := func() {
+		log.Info("收到停止信号...")
+		if appMonitor != nil {
+			appMonitor.Stop()
+		}
+		if appDelDeleter != nil {
+			appDelDeleter.Stop()
+		}
+		log.Info("程序已退出")
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}
+	port, err := StartIPCServer(cfg, termDB, metadata, class, log, mon, delDeleter, onStop)
+	if err != nil {
+		log.Error("启动IPC服务失败: %v", err)
+	} else {
+		log.Info("IPC服务已启动: http://%s:%d", cfg.IPCBindHost, port)
+	}
 }
 
-// disableAutoStart 禁用开机自启
-func disableAutoStart() {
-	fmt.Println("禁用开机自启:")
-	fmt.Println("  reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v boardsorter /f")
+// applySystemSettings 幂等地根据 cfg.AutoStart / cfg.StartMenuLink 同步系统状态
+func applySystemSettings(cfg *Config, log *Logger) {
+	execPath, err := os.Executable()
+	if err != nil {
+		log.Warn("获取可执行文件路径失败，跳过系统设置: %v", err)
+		return
+	}
+
+	// 1) 开机自启
+	if cfg.AutoStart {
+		curEnabled, _ := IsAutoStartEnabled()
+		curPath, _ := GetAutoStartExePath()
+		if !curEnabled || !samePath(curPath, execPath) {
+			if err := SetAutoStart(true, execPath); err != nil {
+				log.Warn("启用开机自启失败: %v", err)
+			} else {
+				log.Info("已启用开机自启: %s", execPath)
+			}
+		} else {
+			log.Info("开机自启已是最新状态，无需更新")
+		}
+	} else {
+		curEnabled, _ := IsAutoStartEnabled()
+		if curEnabled {
+			if err := SetAutoStart(false, execPath); err != nil {
+				log.Warn("禁用开机自启失败: %v", err)
+			} else {
+				log.Info("已禁用开机自启")
+			}
+		}
+	}
+
+	// 2) 开始菜单快捷方式
+	if cfg.StartMenuLink {
+		if hasStartMenuShortcuts(appDisplayName) {
+			log.Info("开始菜单快捷方式已存在，无需更新")
+		} else {
+			if err := CreateStartMenuShortcuts(execPath, appDisplayName); err != nil {
+				log.Warn("创建开始菜单快捷方式失败: %v", err)
+			} else {
+				log.Info("已创建开始菜单快捷方式")
+			}
+		}
+	} else {
+		if hasStartMenuShortcuts(appDisplayName) {
+			if err := RemoveStartMenuShortcuts(appDisplayName); err != nil {
+				log.Warn("删除开始菜单快捷方式失败: %v", err)
+			} else {
+				log.Info("已删除开始菜单快捷方式")
+			}
+		}
+	}
+}
+
+// hasStartMenuShortcuts 检查开始菜单 Programs / StartUp 下 .lnk 是否存在
+func hasStartMenuShortcuts(appName string) bool {
+	// 简单判断：尝试走和 CreateStartMenuShortcuts 相同的路径
+	// 通过 system 包提供的辅助函数获取（系统实现里如果不存在则返回空）
+	programsPath, err := getStartMenuProgramsPath()
+	if err != nil {
+		return false
+	}
+	mainLink := filepath.Join(programsPath, appName+".lnk")
+	if _, err := os.Stat(mainLink); err == nil {
+		return true
+	}
+	startupPath, err := getStartMenuStartUpPath()
+	if err != nil {
+		return false
+	}
+	startupLink := filepath.Join(startupPath, appName+".lnk")
+	if _, err := os.Stat(startupLink); err == nil {
+		return true
+	}
+	return false
+}
+
+// samePath 比较两个路径是否指向同一文件（忽略大小写与可能的 .. 等）
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return strings.EqualFold(filepath.Clean(absA), filepath.Clean(absB))
+}
+
+// cleanupSystem 删除自启动和开始菜单快捷方式，然后退出
+func cleanupSystem() {
+	fmt.Println("正在清理系统集成项（开机自启 + 开始菜单快捷方式）...")
+	if err := SetAutoStart(false, ""); err != nil {
+		fmt.Fprintf(os.Stderr, "删除开机自启失败: %v\n", err)
+	} else {
+		fmt.Println("已删除开机自启项")
+	}
+	if err := RemoveStartMenuShortcuts(appDisplayName); err != nil {
+		fmt.Fprintf(os.Stderr, "删除开始菜单快捷方式失败: %v\n", err)
+	} else {
+		fmt.Println("已删除开始菜单快捷方式")
+	}
+	fmt.Println("清理完成。")
 }
 
 func printHelp() {
@@ -282,11 +371,11 @@ func printHelp() {
 	fmt.Println("版本: 1.3")
 	fmt.Println()
 	fmt.Println("用法:")
-	fmt.Println("  boardsorter                  启动程序（带系统托盘）")
-	fmt.Println("  boardsorter --console        控制台模式（无托盘）")
-	fmt.Println("  boardsorter --autostart      启用开机自启")
-	fmt.Println("  boardsorter --no-autostart   禁用开机自启")
-	fmt.Println("  boardsorter --help           显示帮助信息")
+	fmt.Println("  boardsorter                  启动程序（控制台模式）")
+	fmt.Println("  boardsorter --console, -c    启动程序（控制台模式）")
+	fmt.Println("  boardsorter --no-ipc         启动程序但不启动 IPC 服务（调试用）")
+	fmt.Println("  boardsorter --cleanup-system 删除开机自启和开始菜单快捷方式后退出")
+	fmt.Println("  boardsorter --help, -h       显示帮助信息")
 	fmt.Println()
 	fmt.Println("配置文件 config.ini 需与程序在同一目录")
 }

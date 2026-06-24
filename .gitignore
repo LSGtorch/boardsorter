@@ -2,3 +2,7 @@ config.ini
 *.exe
 *.zip
 data/
+boardsorter-config/bin/
+boardsorter-config/obj/
+boardsorter
+release/
