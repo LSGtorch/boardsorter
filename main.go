@@ -5,19 +5,20 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
 )
 
 const (
 	configFileName = "config.ini"
 	dataDirName    = "data"
-	appDisplayName = "BoardSorter"
+	appDisplayName = "boardsorter"
+	appVersion     = "1.3"
 )
 
 // 全局组件引用，供 startServer 使用
 var (
 	appLog       *Logger
-	appWordStore *HotWordStore
+	appTermDB    *TermDB
+	appMetadata  *FileMetadata
 	appDelDeleter *DelayedDeleter
 	appMonitor   *Monitor
 	appTray      *TrayApp
@@ -66,7 +67,6 @@ func runConsole(execDir string) {
 func runWithTray(execDir string) {
 	cfg, log := initSystem(execDir)
 	if cfg == nil || log == nil {
-		// 启动失败，暂停让用户看到错误信息
 		fmt.Println("按回车键退出...")
 		fmt.Scanln()
 		os.Exit(1)
@@ -89,7 +89,7 @@ func runWithTray(execDir string) {
 		},
 	)
 
-	log.Info("BoardSorter 已在系统托盘运行，点击托盘图标查看日志")
+	log.Info("boardsorter 已在系统托盘运行，点击托盘图标查看日志")
 	log.Info("运行模式: 托盘模式（右键菜单可查看日志或退出）")
 	appTray = tray
 	// 将日志回调注册到托盘，让托盘可以显示日志
@@ -133,7 +133,7 @@ func initSystem(execDir string) (*Config, *Logger) {
 	}
 
 	log.Info("========================================")
-	log.Info("  %s v1.1 启动", appDisplayName)
+	log.Info("  %s v%s 启动", appDisplayName, appVersion)
 	log.Info("  配置文件: %s", configPath)
 	log.Info("  监控目录: %s", cfg.WatchFolder)
 	log.Info("  归档目录: %s", cfg.ArchiveRoot)
@@ -146,19 +146,28 @@ func initSystem(execDir string) (*Config, *Logger) {
 func startServer(cfg *Config, log *Logger) {
 	execDir, _ := os.Getwd()
 
-	// 初始化词库
-	wordDataDir := filepath.Join(execDir, dataDirName)
-	wordStore, err := NewHotWordStore(
-		wordDataDir,
-		cfg.HotDegradeDays,
-		cfg.ColdDeleteDays,
-		log.Raw,
-	)
+	// 初始化数据存储
+	dataDir := filepath.Join(execDir, dataDirName)
+
+	// 词条数据库
+	termDB, err := NewTermDB(dataDir, cfg.SubjectFolders, log.Raw)
 	if err != nil {
-		log.Error("初始化词库失败: %v", err)
+		log.Error("初始化词条库失败: %v", err)
 		return
 	}
-	appWordStore = wordStore
+	appTermDB = termDB
+	termCount := termDB.GetStats()
+	log.Info("词条库加载完成: %d 个词条", termCount)
+
+	// 文件元数据
+	metadata, err := NewFileMetadata(dataDir)
+	if err != nil {
+		log.Error("初始化文件元数据失败: %v", err)
+		return
+	}
+	appMetadata = metadata
+	total, pending := metadata.GetStats()
+	log.Info("文件元数据: 已记录 %d 个文件, 待确认 %d 个", total, pending)
 
 	// 初始化AI客户端
 	aiClient := NewAIClient(
@@ -187,7 +196,8 @@ func startServer(cfg *Config, log *Logger) {
 		cfg.ArchiveRoot,
 		cfg.IrrelevantFolder,
 		cfg.UncertainFolder,
-		wordStore,
+		termDB,
+		metadata,
 		aiClient,
 		extract,
 		arch,
@@ -195,9 +205,13 @@ func startServer(cfg *Config, log *Logger) {
 		log.Raw,
 	)
 
-	// 打印词库统计
-	hotCount, coldCount := wordStore.GetStats()
-	log.Info("词库加载完成: 热词 %d 个, 冷词 %d 个", hotCount, coldCount)
+	// 启动时扫描用户手动放入的文件
+	class.ScanSubjectFolders(cfg.SubjectFolders)
+	totalAfter, _ := metadata.GetStats()
+	if totalAfter > total {
+		log.Info("[启动扫描] 补录 %d 个手动文件", totalAfter-total)
+
+	}
 
 	// 启动文件监控
 	mon, err := NewMonitor(cfg.WatchFolder, class.ClassifyFile, log.Raw)
@@ -209,24 +223,38 @@ func startServer(cfg *Config, log *Logger) {
 	appMonitor = mon
 	log.Info("开始监控文件夹: %s", cfg.WatchFolder)
 
-	// 每日定时任务：中午12:00 执行热词/冷词升降级检查
+	// 定时任务：每小时扫描手动放入的文件 + 每日词条衰减
 	go func() {
+		// 首次扫描延迟1分钟（避免启动时与监控事件冲突）
+		nextScan := time.Now().Add(1 * time.Minute)
+		// 词条衰减每日一次
+		nextDecay := time.Now().Add(24 * time.Hour)
+
 		for {
 			now := time.Now()
-			next := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
-			if now.After(next) {
-				next = next.Add(24 * time.Hour)
+			sleepFor := time.Hour
+			if nextScan.Before(now) {
+				sleepFor = 1 * time.Minute
+			} else {
+				sleepFor = nextScan.Sub(now)
 			}
-			log.Info("[定时任务] 下次热词/冷词升降级检查将在 %s 执行", next.Format("2006-01-02 15:04:05"))
-			time.Sleep(next.Sub(now))
-			log.Info("[定时任务] 开始执行热词/冷词升降级检查...")
-			wordStore.DailyUpgradeDowngrade()
-			hotCount, coldCount = wordStore.GetStats()
-			log.Info("[定时任务] 升降级完成: 热词 %d 个, 冷词 %d 个", hotCount, coldCount)
+			time.Sleep(sleepFor)
+
+			now = time.Now()
+			if now.After(nextScan) {
+				log.Info("[定时扫描] 开始扫描用户手动放入的文件...")
+				class.ScanSubjectFolders(cfg.SubjectFolders)
+				nextScan = now.Add(1 * time.Hour)
+			}
+			if now.After(nextDecay) {
+				log.Info("[定时任务] 开始词条衰减...")
+				termDB.Decay(cfg.TermMaxIdleDays)
+				nextDecay = now.Add(24 * time.Hour)
+			}
 		}
 	}()
 
-	log.Info("BoardSorter 服务已完全启动")
+	log.Info("boardsorter 服务已完全启动")
 }
 
 // enableAutoStart 启用开机自启（Windows）
@@ -239,19 +267,19 @@ func enableAutoStart() {
 
 	fmt.Printf("启用开机自启: %s\n", execPath)
 	fmt.Println("请在Windows环境下运行以下命令或手动添加开机启动项:")
-	fmt.Printf("  reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v BoardSorter /t REG_SZ /d \"%s\" /f\n", execPath)
+	fmt.Printf("  reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v boardsorter /t REG_SZ /d \"%s\" /f\n", execPath)
 	fmt.Println("或者将程序快捷方式放入: %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup")
 }
 
 // disableAutoStart 禁用开机自启
 func disableAutoStart() {
 	fmt.Println("禁用开机自启:")
-	fmt.Println("  reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v BoardSorter /f")
+	fmt.Println("  reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v boardsorter /f")
 }
 
 func printHelp() {
-	fmt.Println("BoardSorter - 高中教学文件自动归档系统")
-	fmt.Println("版本: 1.1")
+	fmt.Println("boardsorter - 高中教学文件自动归档系统")
+	fmt.Println("版本: 1.3")
 	fmt.Println()
 	fmt.Println("用法:")
 	fmt.Println("  boardsorter                  启动程序（带系统托盘）")

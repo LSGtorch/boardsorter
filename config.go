@@ -27,9 +27,8 @@ type Config struct {
 	ReasoningEffort  string
 
 	// 规则配置
-	HotDegradeDays     int
-	ColdDeleteDays     int
 	SourceRetainHour   int
+	TermMaxIdleDays    int
 	ReadableExts       string
 	ArchiveExts        string
 
@@ -46,8 +45,6 @@ type Config struct {
 const (
 	defaultRetryWaitSec     = 60
 	defaultMaxRetries       = 1
-	defaultHotDegradeDays   = 7
-	defaultColdDeleteDays   = 30
 	defaultSourceRetainHour = 1
 	defaultScanInterval     = 5
 	defaultReadableExts     = ".docx,.pptx,.pdf,.txt"
@@ -55,6 +52,7 @@ const (
 	defaultAIEndpoint       = "https://api.deepseek.com/v1/chat/completions"
 	defaultModelName        = "deepseek-v4-flash"
 	defaultReasoningEffort  = "low"
+	defaultTermMaxIdleDays  = 30
 )
 
 // 默认科目
@@ -65,12 +63,11 @@ func LoadConfig(path string) (*Config, error) {
 	cfg := &Config{
 		RetryWaitSec:     defaultRetryWaitSec,
 		MaxRetries:       defaultMaxRetries,
-		HotDegradeDays:   defaultHotDegradeDays,
-		ColdDeleteDays:   defaultColdDeleteDays,
 		SourceRetainHour: defaultSourceRetainHour,
 		ScanInterval:     defaultScanInterval,
 		ReadableExts:     defaultReadableExts,
 		ArchiveExts:      defaultArchiveExts,
+		TermMaxIdleDays:  defaultTermMaxIdleDays,
 		SubjectFolders:   append([]string{}, defaultSubjects...),
 		AIPrompt:         defaultPrompt,
 		AIEndpoint:       defaultAIEndpoint,
@@ -180,17 +177,13 @@ func (c *Config) setField(section, key, value string) error {
 
 	case "规则配置":
 		switch key {
-		case "热词未使用降级天数":
-			if n, ok := parseInt(value); ok {
-				c.HotDegradeDays = n
-			}
-		case "冷词未使用删除天数":
-			if n, ok := parseInt(value); ok {
-				c.ColdDeleteDays = n
-			}
 		case "下载源文件保留小时数":
 			if n, ok := parseInt(value); ok {
 				c.SourceRetainHour = n
+			}
+		case "词条最大空闲天数":
+			if n, ok := parseInt(value); ok {
+				c.TermMaxIdleDays = n
 			}
 		case "可读文档扩展名":
 			c.ReadableExts = value
