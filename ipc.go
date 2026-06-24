@@ -258,9 +258,10 @@ type IPCAIConfig struct {
 }
 
 type IPCStartupConfig struct {
-	AutoStart        bool `json:"AutoStart"`
+	AutoStart         bool `json:"AutoStart"`
 	StartMenuShortcut bool `json:"StartMenuShortcut"`
-	IpcPort          int  `json:"IpcPort"`
+	IpcPort           int  `json:"IpcPort"`
+	DarkMode          bool `json:"DarkMode"`
 }
 
 // configToIPC 把 Go Config 转换成 IPC 结构，敏感字段打码。
@@ -280,9 +281,10 @@ func configToIPC(c *Config) IPCConfig {
 			Prompt:         c.AIPrompt,
 		},
 		Startup: IPCStartupConfig{
-			AutoStart:        c.AutoStart,
+			AutoStart:         c.AutoStart,
 			StartMenuShortcut: c.StartMenuLink,
-			IpcPort:          c.IPCPort,
+			IpcPort:           c.IPCPort,
+			DarkMode:          c.DarkMode,
 		},
 	}
 	if out.AI.ApiKey != "" {
@@ -318,6 +320,7 @@ func (c *Config) applyIPC(in IPCConfig) {
 	c.AIPrompt = in.AI.Prompt
 	c.AutoStart = in.Startup.AutoStart
 	c.StartMenuLink = in.Startup.StartMenuShortcut
+	c.DarkMode = in.Startup.DarkMode
 	if in.Startup.IpcPort > 0 {
 		c.IPCPort = in.Startup.IpcPort
 	}

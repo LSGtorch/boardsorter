@@ -45,6 +45,9 @@ type Config struct {
 	AutoStart        bool // 开机自启动
 	StartMenuLink    bool // 开始菜单快捷方式
 
+	// UI配置
+	DarkMode bool // 深色模式
+
 	// 派生字段
 	ReadableExtList []string
 	ArchiveExtList  []string
@@ -233,6 +236,14 @@ func (c *Config) setField(section, key, value string) error {
 		case "开始菜单快捷方式":
 			if b, ok := parseBool(value); ok {
 				c.StartMenuLink = b
+			}
+		}
+
+	case "UI配置":
+		switch key {
+		case "深色模式":
+			if b, ok := parseBool(value); ok {
+				c.DarkMode = b
 			}
 		}
 	}
@@ -460,6 +471,11 @@ func configValueString(section, key string, cfg *Config) (string, bool) {
 		case "开始菜单快捷方式":
 			return strconv.FormatBool(cfg.StartMenuLink), true
 		}
+	case "UI配置":
+		switch key {
+		case "深色模式":
+			return strconv.FormatBool(cfg.DarkMode), true
+		}
 	}
 	return "", false
 }
@@ -512,6 +528,9 @@ var allConfigFields = []configFieldSpec{
 	// [启动配置] - v1.3 新增
 	{Section: "启动配置", Key: "开机自启动", NewInVersion: "v1.3"},
 	{Section: "启动配置", Key: "开始菜单快捷方式", NewInVersion: "v1.3"},
+
+	// [UI配置] - v1.3 新增
+	{Section: "UI配置", Key: "深色模式", NewInVersion: "v1.3"},
 }
 
 // defaultValueForField 返回某个字段的默认值。
