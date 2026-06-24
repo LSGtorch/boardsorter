@@ -82,6 +82,11 @@ func initSystem(execDir string) (*Config, *Logger) {
 		return nil, nil
 	}
 
+	// 启动时自动追加缺失的配置项（向后兼容老用户）
+	if err := appendMissingDefaults(configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "追加缺失配置项失败: %v\n", err)
+	}
+
 	// 确保目录存在
 	if err := cfg.EnsureDirectories(); err != nil {
 		fmt.Fprintf(os.Stderr, "创建目录失败: %v\n", err)
