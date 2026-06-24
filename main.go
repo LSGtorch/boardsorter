@@ -63,7 +63,24 @@ func runConsole(execDir string, noIPC bool) {
 		os.Exit(1)
 	}
 	startServer(cfg, log, noIPC)
-	select {} // 保持运行
+
+	// noIPC 模式（调试）保持原 select{} 阻塞；正常模式启动系统托盘阻塞。
+	if noIPC {
+		select {}
+	}
+	log.Info("启动系统托盘（点 X 关闭窗口后服务仍在托盘运行）")
+	runTray(func() {
+		log.Info("托盘退出信号...")
+		if appMonitor != nil {
+			appMonitor.Stop()
+		}
+		if appDelDeleter != nil {
+			appDelDeleter.Stop()
+		}
+		log.Info("程序已退出")
+		time.Sleep(300 * time.Millisecond)
+		os.Exit(0)
+	})
 }
 
 func initSystem(execDir string) (*Config, *Logger) {

@@ -217,6 +217,112 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, status)
 }
 
+// ============== IPC 专用配置结构 ==============
+//
+// Go 端 Config 的字段命名（WatchFolder/ArchiveRoot/...）与 Avalonia UI 端
+// （WatchDir/ArchiveDir/...）不一致。直接序列化和反序列化 Config 都会导致
+// UI 端读不到值或写不进值。因此在 IPC 层用独立结构 + 显式 json tag，
+// 与 Avalonia 端 ConfigModel 字段一一对应。
+//
+// Avalonia 端字段（PascalCase，但与 Go 端不同）：
+//   MonitorConfig { WatchDir, ArchiveDir, Subjects, Rules }
+//   AIConfig      { Endpoint, ApiKey, Model, ReasoningLevel, Prompt }
+//   StartupConfig { AutoStart, StartMenuShortcut, IpcPort }
+//   RuleItem      { Pattern, Subject, Priority }
+
+type IPCConfig struct {
+	Monitor IPCMonitorConfig `json:"Monitor"`
+	AI      IPCAIConfig      `json:"AI"`
+	Startup IPCStartupConfig `json:"Startup"`
+}
+
+type IPCMonitorConfig struct {
+	WatchDir   string     `json:"WatchDir"`
+	ArchiveDir string     `json:"ArchiveDir"`
+	Subjects   []string   `json:"Subjects"`
+	Rules      []IPCRule  `json:"Rules"`
+}
+
+type IPCRule struct {
+	Pattern  string `json:"Pattern"`
+	Subject  string `json:"Subject"`
+	Priority int    `json:"Priority"`
+}
+
+type IPCAIConfig struct {
+	Endpoint       string `json:"Endpoint"`
+	ApiKey         string `json:"ApiKey"`
+	Model          string `json:"Model"`
+	ReasoningLevel string `json:"ReasoningLevel"`
+	Prompt         string `json:"Prompt"`
+}
+
+type IPCStartupConfig struct {
+	AutoStart        bool `json:"AutoStart"`
+	StartMenuShortcut bool `json:"StartMenuShortcut"`
+	IpcPort          int  `json:"IpcPort"`
+}
+
+// configToIPC 把 Go Config 转换成 IPC 结构，敏感字段打码。
+func configToIPC(c *Config) IPCConfig {
+	out := IPCConfig{
+		Monitor: IPCMonitorConfig{
+			WatchDir:   c.WatchFolder,
+			ArchiveDir: c.ArchiveRoot,
+			Subjects:   append([]string{}, c.SubjectFolders...),
+			Rules:      []IPCRule{},
+		},
+		AI: IPCAIConfig{
+			Endpoint:       c.AIEndpoint,
+			ApiKey:         c.APIKey,
+			Model:          c.ModelName,
+			ReasoningLevel: c.ReasoningEffort,
+			Prompt:         c.AIPrompt,
+		},
+		Startup: IPCStartupConfig{
+			AutoStart:        c.AutoStart,
+			StartMenuShortcut: c.StartMenuLink,
+			IpcPort:          c.IPCPort,
+		},
+	}
+	if out.AI.ApiKey != "" {
+		out.AI.ApiKey = "***"
+	}
+	return out
+}
+
+// ipcToConfig 把 IPC 结构写回 Go Config。APIKey 为空或 "***" 时保留原值。
+func (c *Config) applyIPC(in IPCConfig) {
+	if in.Monitor.WatchDir != "" {
+		c.WatchFolder = in.Monitor.WatchDir
+	}
+	if in.Monitor.ArchiveDir != "" {
+		c.ArchiveRoot = in.Monitor.ArchiveDir
+	}
+	if in.Monitor.Subjects != nil {
+		c.SubjectFolders = append([]string{}, in.Monitor.Subjects...)
+	}
+	if in.AI.Endpoint != "" {
+		c.AIEndpoint = in.AI.Endpoint
+	}
+	if in.AI.ApiKey != "" && in.AI.ApiKey != "***" {
+		c.APIKey = in.AI.ApiKey
+	}
+	if in.AI.Model != "" {
+		c.ModelName = in.AI.Model
+	}
+	if in.AI.ReasoningLevel != "" {
+		c.ReasoningEffort = in.AI.ReasoningLevel
+	}
+	// Prompt 允许为空字符串
+	c.AIPrompt = in.AI.Prompt
+	c.AutoStart = in.Startup.AutoStart
+	c.StartMenuLink = in.Startup.StartMenuShortcut
+	if in.Startup.IpcPort > 0 {
+		c.IPCPort = in.Startup.IpcPort
+	}
+}
+
 // GET/POST /api/config
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -225,53 +331,39 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "config 未初始化")
 			return
 		}
-		writeOK(w, sanitizeConfig(ipcConfig))
+		writeOK(w, configToIPC(ipcConfig))
 	case http.MethodPost:
 		if ipcConfig == nil {
 			writeErr(w, http.StatusInternalServerError, "config 未初始化")
 			return
 		}
-		var newCfg Config
-		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
+		var newIPCCfg IPCConfig
+		if err := json.NewDecoder(r.Body).Decode(&newIPCCfg); err != nil {
 			writeErr(w, http.StatusBadRequest, "JSON 解析失败: "+err.Error())
 			return
 		}
-		// 客户端若传 "***" 表示保留原 APIKey
-		if newCfg.APIKey == "" || newCfg.APIKey == "***" {
-			newCfg.APIKey = ipcConfig.APIKey
-		}
+		// APIKey 为 "***" 时保留原值（在 applyIPC 内部处理）
+		oldWatch := ipcConfig.WatchFolder
+		ipcConfig.applyIPC(newIPCCfg)
 		// 派生字段重新计算
-		newCfg.ReadableExtList = parseExtList(newCfg.ReadableExts)
-		newCfg.ArchiveExtList = parseExtList(newCfg.ArchiveExts)
-		if err := newCfg.Validate(); err != nil {
+		ipcConfig.ReadableExtList = parseExtList(ipcConfig.ReadableExts)
+		ipcConfig.ArchiveExtList = parseExtList(ipcConfig.ArchiveExts)
+		if err := ipcConfig.Validate(); err != nil {
 			writeErr(w, http.StatusBadRequest, "配置无效: "+err.Error())
 			return
 		}
 
-		oldWatch := ipcConfig.WatchFolder
-		// 整体替换内存中的 cfg
-		*ipcConfig = newCfg
-
 		// 若监控目录变化则重启 Monitor
-		if newCfg.WatchFolder != oldWatch && ipcLog != nil {
+		if ipcConfig.WatchFolder != oldWatch && ipcLog != nil {
 			restartMonitor(ipcConfig)
 		}
 		if ipcLog != nil {
 			ipcLog.Info("配置已通过 IPC 热重载")
 		}
-		writeOK(w, sanitizeConfig(ipcConfig))
+		writeOK(w, configToIPC(ipcConfig))
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
-}
-
-// sanitizeConfig 复制配置并把敏感字段替换为 ***
-func sanitizeConfig(c *Config) Config {
-	clone := *c
-	if clone.APIKey != "" {
-		clone.APIKey = "***"
-	}
-	return clone
 }
 
 // restartMonitor 用最新 cfg 的 WatchFolder 重新创建 Monitor
