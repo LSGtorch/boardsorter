@@ -506,20 +506,28 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 		ModifiedAt string `json:"modified_at"`
 	}
 	filtered := make([]ipcFileItem, 0, len(all))
+	removedUUIDs := make([]string, 0)
 	for _, e := range all {
 		if subject != "" && e.Subject != subject {
 			continue
 		}
-		var fileSize int64
-		if info, err := os.Stat(e.CurrentPath); err == nil {
-			fileSize = info.Size()
+		// 检查文件是否存在
+		info, err := os.Stat(e.CurrentPath)
+		if err != nil || !info.Mode().IsRegular() {
+			// 文件已删除，标记移除
+			removedUUIDs = append(removedUUIDs, e.UUID)
+			continue
 		}
 		filtered = append(filtered, ipcFileItem{
 			Path:       e.CurrentPath,
 			Subject:    e.Subject,
-			Size:       fileSize,
+			Size:       info.Size(),
 			ModifiedAt: e.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
+	}
+	// 清理已删除文件的元数据记录
+	for _, uuid := range removedUUIDs {
+		ipcMetadata.Remove(uuid)
 	}
 	sort.Slice(filtered, func(i, j int) bool {
 		return filtered[i].ModifiedAt > filtered[j].ModifiedAt
