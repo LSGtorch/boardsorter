@@ -267,8 +267,9 @@ type IPCStartupConfig struct {
 }
 
 type IPCClassIslandConfig struct {
-	Enabled     bool   `json:"Enabled"`
-	ProfilePath string `json:"ProfilePath"`
+	NotifyEnabled  bool   `json:"NotifyEnabled"`
+	NotifyURL      string `json:"NotifyURL"`
+	NotifyTemplate string `json:"NotifyTemplate"`
 }
 
 // configToIPC 把 Go Config 转换成 IPC 结构，敏感字段打码。
@@ -294,8 +295,9 @@ func configToIPC(c *Config) IPCConfig {
 			DarkMode:          c.DarkMode,
 		},
 		ClassIsland: IPCClassIslandConfig{
-			Enabled:     c.ClassIslandEnabled,
-			ProfilePath: c.ClassIslandPath,
+			NotifyEnabled:  c.ClassIslandNotifyEnabled,
+			NotifyURL:      c.ClassIslandNotifyURL,
+			NotifyTemplate: c.ClassIslandNotifyTemplate,
 		},
 	}
 	if out.AI.ApiKey != "" {

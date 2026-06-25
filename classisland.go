@@ -1,137 +1,84 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
-// ClassIslandProfile 解析 ClassIsland 的 Profile.json
-type ClassIslandProfile struct {
-	ClassPlans []ClassIslandClassPlan `json:"ClassPlans"`
+// ClassIslandNotifier 分类完成时向 ClassIsland 发送通知
+type ClassIslandNotifier struct {
+	enabled    bool
+	apiURL     string
+	template   string
+	httpClient *http.Client
+	logFn      func(string, ...interface{})
 }
 
-// ClassIslandClassPlan 课程计划
-type ClassIslandClassPlan struct {
-	Name      string                   `json:"Name"`
-	TimeTable ClassIslandTimeTable     `json:"TimeTable"`
-}
-
-// ClassIslandTimeTable 时间表
-type ClassIslandTimeTable struct {
-	Layouts []ClassIslandTimeLayout `json:"Layouts"`
-}
-
-// ClassIslandTimeLayout 时间段布局
-type ClassIslandTimeLayout struct {
-	StartTime ClassIslandTimePoint `json:"StartTime"`
-	EndTime   ClassIslandTimePoint `json:"EndTime"`
-	Subject   string               `json:"Subject"`
-}
-
-// ClassIslandTimePoint 时间点（H, M, S）
-type ClassIslandTimePoint struct {
-	H int `json:"H"`
-	M int `json:"M"`
-	S int `json:"S"`
-}
-
-// ClassIslandState 当前课程状态
-type ClassIslandState struct {
-	Connected     bool   `json:"connected"`
-	CurrentClass  string `json:"current_class"`
-	NextClass     string `json:"next_class"`
-	ProfilePath   string `json:"profile_path"`
-	Error         string `json:"error,omitempty"`
-}
-
-// findClassIslandProfile 自动查找 ClassIsland 的 Profile.json
-func findClassIslandProfile() string {
-	// 常见路径
-	paths := []string{
-		filepath.Join(os.Getenv("LOCALAPPDATA"), "ClassIsland", "Profiles", "Profile.json"),
-		filepath.Join(os.Getenv("APPDATA"), "ClassIsland", "Profiles", "Profile.json"),
-		"ClassIsland", // 相对路径
+// NewClassIslandNotifier 创建通知器
+func NewClassIslandNotifier(enabled bool, apiURL, template string, logFn func(string, ...interface{})) *ClassIslandNotifier {
+	if apiURL == "" {
+		apiURL = "http://localhost:5000"
 	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
+	if template == "" {
+		template = "📁 {filename} → {subject}"
 	}
-	return ""
+	return &ClassIslandNotifier{
+		enabled:  enabled,
+		apiURL:   strings.TrimRight(apiURL, "/"),
+		template: template,
+		httpClient: &http.Client{
+			Timeout: 3 * time.Second,
+		},
+		logFn: logFn,
+	}
 }
 
-// getClassIslandState 读取 ClassIsland 当前课程状态
-// configPath: 用户配置中指定的路径，为空则自动查找
-func getClassIslandState(configPath string) ClassIslandState {
-	state := ClassIslandState{}
-
-	profilePath := configPath
-	if profilePath == "" {
-		profilePath = findClassIslandProfile()
-	}
-	if profilePath == "" {
-		state.Error = "未找到 ClassIsland 配置文件"
-		return state
+// Notify 发送分类通知
+func (n *ClassIslandNotifier) Notify(filePath, subject, category string) {
+	if !n.enabled {
+		return
 	}
 
-	state.Connected = true
-	state.ProfilePath = profilePath
+	fileName := filepath.Base(filePath)
+	msg := strings.ReplaceAll(n.template, "{filename}", fileName)
+	msg = strings.ReplaceAll(msg, "{subject}", subject)
+	msg = strings.ReplaceAll(msg, "{category}", category)
 
-	data, err := os.ReadFile(profilePath)
+	// ClassIsland 通知 API 格式
+	body := map[string]string{
+		"title":   "boardsorter 文件分类",
+		"content": msg,
+	}
+	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		state.Error = fmt.Sprintf("读取 Profile 失败: %v", err)
-		return state
+		return
 	}
 
-	var profile ClassIslandProfile
-	if err := json.Unmarshal(data, &profile); err != nil {
-		state.Error = fmt.Sprintf("解析 Profile 失败: %v", err)
-		return state
-	}
-
-	if len(profile.ClassPlans) == 0 {
-		state.Error = "Profile 中没有课程计划"
-		return state
-	}
-
-	// 获取今天的课程计划（取第一个计划，ClassIsland 通常只有一个活跃计划）
-	plan := profile.ClassPlans[0]
-	now := time.Now()
-	currentTime := ClassIslandTimePoint{H: now.Hour(), M: now.Minute(), S: now.Second()}
-
-	for i, layout := range plan.TimeTable.Layouts {
-		if isTimeInRange(currentTime, layout.StartTime, layout.EndTime) {
-			state.CurrentClass = layout.Subject
-			// 查找下一节课
-			if i+1 < len(plan.TimeTable.Layouts) {
-				state.NextClass = plan.TimeTable.Layouts[i+1].Subject
+	go func() {
+		resp, err := n.httpClient.Post(
+			n.apiURL+"/api/notification",
+			"application/json",
+			bytes.NewReader(jsonBody),
+		)
+		if err != nil {
+			if n.logFn != nil {
+				n.logFn("[DEBUG] ClassIsland 通知发送失败: %v", err)
 			}
-			return state
+			return
 		}
-		// 查找下一节课（当前时间在课程之前）
-		if isTimeBefore(currentTime, layout.StartTime) {
-			state.NextClass = layout.Subject
-			return state
+		resp.Body.Close()
+		if n.logFn != nil {
+			n.logFn("[INFO] ClassIsland 通知已发送: %s", msg)
 		}
-	}
-
-	return state
+	}()
 }
 
-// isTimeInRange 判断当前时间是否在 [start, end] 范围内
-func isTimeInRange(now, start, end ClassIslandTimePoint) bool {
-	nowSec := now.H*3600 + now.M*60 + now.S
-	startSec := start.H*3600 + start.M*60 + start.S
-	endSec := end.H*3600 + end.M*60 + end.S
-	return nowSec >= startSec && nowSec <= endSec
-}
-
-// isTimeBefore 判断 now 是否在 target 之前
-func isTimeBefore(now, target ClassIslandTimePoint) bool {
-	nowSec := now.H*3600 + now.M*60 + now.S
-	targetSec := target.H*3600 + target.M*60 + target.S
-	return nowSec < targetSec
+// IsEnabled 返回通知是否启用
+func (n *ClassIslandNotifier) IsEnabled() bool {
+	return n.enabled
 }

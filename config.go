@@ -48,9 +48,10 @@ type Config struct {
 	// UI配置
 	DarkMode bool // 深色模式
 
-	// ClassIsland 联动配置
-	ClassIslandEnabled bool   // 是否启用 ClassIsland 联动
-	ClassIslandPath    string // ClassIsland 配置文件路径，空=自动查找
+	// ClassIsland 通知配置
+	ClassIslandNotifyEnabled  bool   // 是否启用分类通知
+	ClassIslandNotifyURL      string // ClassIsland API 地址
+	ClassIslandNotifyTemplate string // 通知模板
 
 	// 派生字段
 	ReadableExtList []string
@@ -251,14 +252,16 @@ func (c *Config) setField(section, key, value string) error {
 			}
 		}
 
-	case "ClassIsland配置":
+	case "ClassIsland通知":
 		switch key {
-		case "启用联动":
+		case "启用通知":
 			if b, ok := parseBool(value); ok {
-				c.ClassIslandEnabled = b
+				c.ClassIslandNotifyEnabled = b
 			}
-		case "配置文件路径":
-			c.ClassIslandPath = value
+		case "API地址":
+			c.ClassIslandNotifyURL = value
+		case "通知模板":
+			c.ClassIslandNotifyTemplate = value
 		}
 	}
 
@@ -490,12 +493,14 @@ func configValueString(section, key string, cfg *Config) (string, bool) {
 		case "深色模式":
 			return strconv.FormatBool(cfg.DarkMode), true
 		}
-	case "ClassIsland配置":
+	case "ClassIsland通知":
 		switch key {
-		case "启用联动":
-			return strconv.FormatBool(cfg.ClassIslandEnabled), true
-		case "配置文件路径":
-			return cfg.ClassIslandPath, true
+		case "启用通知":
+			return strconv.FormatBool(cfg.ClassIslandNotifyEnabled), true
+		case "API地址":
+			return cfg.ClassIslandNotifyURL, true
+		case "通知模板":
+			return cfg.ClassIslandNotifyTemplate, true
 		}
 	}
 	return "", false
@@ -553,9 +558,10 @@ var allConfigFields = []configFieldSpec{
 	// [UI配置] - v1.3 新增
 	{Section: "UI配置", Key: "深色模式", NewInVersion: "v1.3"},
 
-	// [ClassIsland配置] - v1.3 新增
-	{Section: "ClassIsland配置", Key: "启用联动", NewInVersion: "v1.3"},
-	{Section: "ClassIsland配置", Key: "配置文件路径", NewInVersion: "v1.3"},
+	// [ClassIsland通知] - v1.3 新增
+	{Section: "ClassIsland通知", Key: "启用通知", NewInVersion: "v1.3"},
+	{Section: "ClassIsland通知", Key: "API地址", NewInVersion: "v1.3"},
+	{Section: "ClassIsland通知", Key: "通知模板", NewInVersion: "v1.3"},
 }
 
 // defaultValueForField 返回某个字段的默认值。
@@ -616,12 +622,14 @@ func defaultValueForField(section, key string) string {
 		case "科目文件夹列表":
 			return strings.Join(defaultSubjects, ", ")
 		}
-	case "ClassIsland配置":
+	case "ClassIsland通知":
 		switch key {
-		case "启用联动":
+		case "启用通知":
 			return "false"
-		case "配置文件路径":
-			return ""
+		case "API地址":
+			return "http://localhost:5000"
+		case "通知模板":
+			return "{filename} → {subject}"
 		}
 	}
 	return ""
