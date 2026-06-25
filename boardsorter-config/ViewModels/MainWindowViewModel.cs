@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Styling;
@@ -35,6 +36,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _subjectsText = "";
 
+    // Rules - moved to 词条库页面
     public ObservableCollection<RuleItem> Rules { get; } = new();
 
     [ObservableProperty]
@@ -87,55 +89,86 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _classIslandNotifyEnabled;
 
     [ObservableProperty]
-    private string _classIslandNotifyURL = "classisland://app/";
-
-    [ObservableProperty]
-    private string _classIslandNotifyTemplate = "{filename} → {subject}";
-
-    [ObservableProperty]
     private bool _autoRefresh = true; // 默认启用自动刷新
 
     partial void OnAutoRefreshChanged(bool value)
     {
         if (value)
-        {
-            _autoRefreshTimer = new DispatcherTimer(
-                TimeSpan.FromSeconds(5),
-                DispatcherPriority.Background,
-                async (s, e) =>
-                {
-                    await RefreshTermsAsync();
-                    await RefreshLogsAsync();
-                    await PollClassIslandNotificationsAsync();
-                });
-            _autoRefreshTimer.Start();
-        }
+            StartAutoRefresh();
         else
-        {
-            _autoRefreshTimer?.Stop();
-            _autoRefreshTimer = null;
-        }
+            StopAutoRefresh();
     }
 
-    public ObservableCollection<TermEntry> Terms { get; } = new();
+    // ========== 词条库 ==========
+
+    [ObservableProperty]
+    private ObservableCollection<TermEntry> _terms = new();
 
     [ObservableProperty]
     private string _termQuery = "";
 
-    public ObservableCollection<FileMeta> Files { get; } = new();
+    /// <summary>
+    /// 科目筛选（空=全部）
+    /// </summary>
+    [ObservableProperty]
+    private string _subjectFilter = "";
 
-    public ObservableCollection<LogEntry> Logs { get; } = new();
+    /// <summary>
+    /// 可选科目列表（从配置加载）
+    /// </summary>
+    [ObservableProperty]
+    private ObservableCollection<string> _subjectOptions = new();
+
+    partial void OnSubjectFilterChanged(string value)
+    {
+        _ = RefreshTermsAsync();
+    }
+
+    /// <summary>
+    /// 选中词条 → 检索关联文件
+    /// </summary>
+    [ObservableProperty]
+    private TermEntry? _selectedTerm;
+
+    partial void OnSelectedTermChanged(TermEntry? value)
+    {
+        if (value != null)
+            _ = SearchFilesByTermAsync(value.Term);
+    }
+
+    [ObservableProperty]
+    private ObservableCollection<FileMeta> _termFiles = new();
+
+    // ========== 文件元数据 ==========
+
+    [ObservableProperty]
+    private ObservableCollection<FileMeta> _files = new();
+
+    [ObservableProperty]
+    private string _fileSubjectFilter = "";
+
+    partial void OnFileSubjectFilterChanged(string value)
+    {
+        _ = RefreshFilesAsync();
+    }
+
+    // ========== 日志 ==========
+
+    [ObservableProperty]
+    private ObservableCollection<LogEntry> _logs = new();
 
     public MainWindowViewModel()
     {
         IpcPort = _client.Port;
         _ = RefreshAllAsync();
         // 自动刷新默认启用，启动定时器
-        StartAutoRefresh();
+        if (AutoRefresh)
+            StartAutoRefresh();
     }
 
     private void StartAutoRefresh()
     {
+        StopAutoRefresh();
         _autoRefreshTimer = new DispatcherTimer(
             TimeSpan.FromSeconds(5),
             DispatcherPriority.Background,
@@ -147,6 +180,12 @@ public partial class MainWindowViewModel : ViewModelBase
                 await PollClassIslandNotificationsAsync();
             });
         _autoRefreshTimer.Start();
+    }
+
+    private void StopAutoRefresh()
+    {
+        _autoRefreshTimer?.Stop();
+        _autoRefreshTimer = null;
     }
 
     [RelayCommand]
@@ -177,8 +216,15 @@ public partial class MainWindowViewModel : ViewModelBase
             IpcPort = cfg.Startup.IpcPort;
             DarkMode = cfg.Startup.DarkMode;
             ClassIslandNotifyEnabled = cfg.ClassIsland.NotifyEnabled;
-            ClassIslandNotifyURL = cfg.ClassIsland.NotifyURL;
-            ClassIslandNotifyTemplate = cfg.ClassIsland.NotifyTemplate;
+
+            // 更新科目列表
+            SubjectOptions.Clear();
+            SubjectOptions.Add(""); // 空=全部
+            foreach (var s in cfg.Monitor.Subjects)
+            {
+                if (!SubjectOptions.Contains(s))
+                    SubjectOptions.Add(s);
+            }
         }
 
         await RefreshTermsAsync();
@@ -202,53 +248,51 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task RefreshTermsAsync()
     {
-        var terms = await _client.SearchTermsAsync(TermQuery);
-        Terms.Clear();
-        foreach (var t in terms)
-        {
-            Terms.Add(t);
-        }
+        var terms = await _client.SearchTermsAsync(TermQuery, SubjectFilter);
+        // 替换整个集合以保持 DataGrid 滚动位置稳定
+        Terms = new ObservableCollection<TermEntry>(terms);
     }
 
     [RelayCommand]
     private async Task RefreshFilesAsync()
     {
-        var files = await _client.ListFilesAsync();
-        Files.Clear();
-        foreach (var f in files)
-        {
-            Files.Add(f);
-        }
+        var files = await _client.ListFilesAsync(FileSubjectFilter);
+        // 替换整个集合以保持 DataGrid 滚动位置稳定
+        Files = new ObservableCollection<FileMeta>(files);
     }
 
     [RelayCommand]
     private async Task RefreshLogsAsync()
     {
         var logs = await _client.GetLogsAsync();
-        Logs.Clear();
-        foreach (var l in logs)
-        {
-            Logs.Add(l);
-        }
+        Logs = new ObservableCollection<LogEntry>(logs);
     }
 
     /// <summary>
-    /// 轮询 Go 端通知队列，取出后通过 dotnetCampus.Ipc 发送到 ClassIsland
+    /// 根据选中的词条检索关联文件
+    /// </summary>
+    private async Task SearchFilesByTermAsync(string term)
+    {
+        if (string.IsNullOrEmpty(term))
+        {
+            TermFiles.Clear();
+            return;
+        }
+        var files = await _client.SearchFilesByTermAsync(term);
+        TermFiles = new ObservableCollection<FileMeta>(files);
+    }
+
+    /// <summary>
+    /// 轮询 Go 端通知队列，通过 Windows Toast 显示
     /// </summary>
     private async Task PollClassIslandNotificationsAsync()
     {
         if (!ClassIslandNotifyEnabled) return;
-        if (!_ciBridge.Connected)
-        {
-            await _ciBridge.ConnectAsync();
-            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
-            if (!_ciBridge.Connected) return;
-        }
 
         var notifications = await _client.GetClassIslandNotificationsAsync();
         foreach (var n in notifications)
         {
-            _ciBridge.SendNotification(n.FileName, n.Subject, ClassIslandNotifyURL, ClassIslandNotifyTemplate);
+            _ciBridge.SendNotification(n.FileName, n.Subject);
         }
     }
 
@@ -283,8 +327,8 @@ public partial class MainWindowViewModel : ViewModelBase
             ClassIsland = new ClassIslandConfig
             {
                 NotifyEnabled = ClassIslandNotifyEnabled,
-                NotifyURL = ClassIslandNotifyURL,
-                NotifyTemplate = ClassIslandNotifyTemplate
+                NotifyURL = "",
+                NotifyTemplate = ""
             }
         };
         var ok = await _client.UpdateConfigAsync(cfg);

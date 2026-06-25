@@ -1,35 +1,34 @@
 using System;
 using System.Threading.Tasks;
-using ClassIsland.Shared.IPC;
-using ClassIsland.Shared.IPC.Abstractions.Services;
-using dotnetCampus.Ipc.CompilerServices.GeneratedProxies;
+using Windows.Data.Xml.Dom;
+using Windows.UI.Notifications;
 
 namespace BoardsorterConfig.Services;
 
 /// <summary>
-/// 通过 ClassIsland.Shared.IPC 命名管道连接到 ClassIsland，
-/// 使用 IPublicUriNavigationService 在 ClassIsland 中触发导航/通知
+/// 通过 Windows 原生 Toast 通知发送文件分类通知。
+/// 直接在 Windows 通知中心显示，不依赖 ClassIsland IPC。
 /// </summary>
 public class ClassIslandIpcBridge : IDisposable
 {
-    private IpcClient? _client;
-    private IPublicUriNavigationService? _uriNav;
     private bool _connected;
     private string _lastError = "";
 
     public bool Connected => _connected;
     public string LastError => _lastError;
 
+    /// <summary>
+    /// 检查 ClassIsland 是否在运行（仅用于状态显示）
+    /// </summary>
     public async Task ConnectAsync()
     {
         try
         {
-            _client = new IpcClient();
-            await _client.Connect();
-            _uriNav = GeneratedIpcFactory.CreateIpcProxy<IPublicUriNavigationService>(
-                _client.Provider, _client.PeerProxy!);
+            var client = new ClassIsland.Shared.IPC.IpcClient();
+            await client.Connect();
             _connected = true;
             _lastError = "";
+            client.Provider.Dispose();
         }
         catch (Exception ex)
         {
@@ -39,36 +38,29 @@ public class ClassIslandIpcBridge : IDisposable
     }
 
     /// <summary>
-    /// 发送文件分类通知到 ClassIsland。
-    /// 使用 IPublicUriNavigationService 导航到配置的 ClassIsland URI，
-    /// 通知内容通过 URI query 参数传递。
+    /// 发送 Windows Toast 通知
     /// </summary>
-    public void SendNotification(string fileName, string subject, string notifyUrl, string template)
+    public void SendNotification(string fileName, string subject)
     {
-        if (!_connected || _uriNav == null)
-            return;
         try
         {
-            var message = template
-                .Replace("{filename}", fileName)
-                .Replace("{subject}", subject);
+            var template = ToastNotificationManager.GetTemplateContent(ToastTemplateType.ToastText02);
+            var elements = template.GetElementsByTagName("text");
+            elements[0].AppendChild(template.CreateTextNode("Boardsorter - 文件分类完成"));
+            elements[1].AppendChild(template.CreateTextNode($"{fileName} → {subject}"));
 
-            var encodedMessage = Uri.EscapeDataString(message);
-            var separator = notifyUrl.Contains('?') ? "&" : "?";
-            var fullUri = new Uri($"{notifyUrl}{separator}boardsorter_msg={encodedMessage}");
-
-            _uriNav.Navigate(fullUri);
+            var toast = new ToastNotification(template);
+            ToastNotificationManager.CreateToastNotifier().Show(toast);
+            _lastError = "";
         }
         catch (Exception ex)
         {
             _lastError = ex.Message;
-            _connected = false;
         }
     }
 
     public void Dispose()
     {
-        _client?.Provider.Dispose();
         _connected = false;
     }
 }

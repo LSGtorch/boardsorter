@@ -172,11 +172,13 @@ public class BoardsorterClient
         }
     }
 
-    public async Task<List<TermEntry>> SearchTermsAsync(string query)
+    public async Task<List<TermEntry>> SearchTermsAsync(string query, string subject = "")
     {
         try
         {
             var url = $"{BaseUrl}/api/terms?keyword={Uri.EscapeDataString(query ?? "")}";
+            if (!string.IsNullOrEmpty(subject))
+                url += $"&subject={Uri.EscapeDataString(subject)}";
             var resp = await _http.GetAsync(url);
             if (!resp.IsSuccessStatusCode)
             {
@@ -204,12 +206,20 @@ public class BoardsorterClient
         public int Total { get; set; }
     }
 
-    public async Task<List<FileMeta>> ListFilesAsync()
+    public async Task<List<FileMeta>> ListFilesAsync(string subject = "", string term = "")
     {
         try
         {
             // /api/files 返回 { total, items }，我们只取 items
-            var resp = await _http.GetAsync($"{BaseUrl}/api/files");
+            var url = $"{BaseUrl}/api/files";
+            var query = new List<string>();
+            if (!string.IsNullOrEmpty(subject))
+                query.Add($"subject={Uri.EscapeDataString(subject)}");
+            if (!string.IsNullOrEmpty(term))
+                query.Add($"term={Uri.EscapeDataString(term)}");
+            if (query.Count > 0)
+                url += "?" + string.Join("&", query);
+            var resp = await _http.GetAsync(url);
             if (!resp.IsSuccessStatusCode)
             {
                 _lastError = $"HTTP {(int)resp.StatusCode}";
@@ -228,6 +238,11 @@ public class BoardsorterClient
             _lastError = ex.Message;
             return new List<FileMeta>();
         }
+    }
+
+    public async Task<List<FileMeta>> SearchFilesByTermAsync(string term)
+    {
+        return await ListFilesAsync("", term);
     }
 
     private class FileListResponse

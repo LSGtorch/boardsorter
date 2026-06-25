@@ -476,7 +476,7 @@ func handleTerms(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/files?subject=xxx&limit=100&offset=0
+// GET /api/files?subject=xxx&term=xxx&limit=100&offset=0
 func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -488,6 +488,7 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	subject := strings.TrimSpace(q.Get("subject"))
+	term := strings.TrimSpace(q.Get("term"))
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	if limit <= 0 {
 		limit = 100
@@ -498,6 +499,26 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	all := ipcMetadata.AllEntries()
+	// 如果指定了 term，先用 term 筛选出关联的 file UUID
+	var termFileUUIDs map[string]bool
+	if term != "" {
+		termFileUUIDs = make(map[string]bool)
+		termLower := strings.ToLower(term)
+		if ipcTermDB != nil {
+			allTerms := ipcTermDB.GetAllTerms()
+			for t, subjectMap := range allTerms {
+				if !strings.Contains(strings.ToLower(t), termLower) {
+					continue
+				}
+				for _, info := range subjectMap {
+					for _, uuid := range info.MatchedFiles {
+						termFileUUIDs[uuid] = true
+					}
+				}
+			}
+		}
+	}
+
 	// 构建 IPC 友好结构，字段名与 C# FileMeta 对齐
 	type ipcFileItem struct {
 		Path       string `json:"path"`
@@ -509,6 +530,9 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	removedUUIDs := make([]string, 0)
 	for _, e := range all {
 		if subject != "" && e.Subject != subject {
+			continue
+		}
+		if termFileUUIDs != nil && !termFileUUIDs[e.UUID] {
 			continue
 		}
 		// 检查文件是否存在
