@@ -16,7 +16,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _pages = new Control[] { Page0, Page1, Page2, Page3, Page4, Page5, Page6 };
+        _pages = new Control[] { Page0, Page1, Page2, Page3, Page4, Page5, Page6, Page7 };
         NavList.SelectionChanged += (s, e) =>
         {
             SwitchPage(NavList.SelectedIndex);

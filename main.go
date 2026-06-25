@@ -58,8 +58,11 @@ func main() {
 func runConsole(execDir string, noIPC bool) {
 	cfg, log := initSystem(execDir)
 	if cfg == nil || log == nil {
-		fmt.Println("按回车键退出...")
-		fmt.Scanln()
+		// 只在有控制台时才等待输入（GUI 模式无控制台）
+		if isConsoleAttached() {
+			fmt.Println("按回车键退出...")
+			fmt.Scanln()
+		}
 		os.Exit(1)
 	}
 	startServer(cfg, log, noIPC)

@@ -111,6 +111,7 @@ func StartIPCServer(
 	mux.HandleFunc("/api/decay", corsHandler(handleDecay))
 	mux.HandleFunc("/api/stop", corsHandler(handleStop))
 	mux.HandleFunc("/api/system/startmenu", corsHandler(handleSystemStartMenu))
+	mux.HandleFunc("/api/classisland", corsHandler(handleClassIsland))
 
 	// 顺序尝试候选端口
 	var listener net.Listener
@@ -231,9 +232,10 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 //   RuleItem      { Pattern, Subject, Priority }
 
 type IPCConfig struct {
-	Monitor IPCMonitorConfig `json:"Monitor"`
-	AI      IPCAIConfig      `json:"AI"`
-	Startup IPCStartupConfig `json:"Startup"`
+	Monitor     IPCMonitorConfig     `json:"Monitor"`
+	AI          IPCAIConfig          `json:"AI"`
+	Startup     IPCStartupConfig     `json:"Startup"`
+	ClassIsland IPCClassIslandConfig `json:"ClassIsland"`
 }
 
 type IPCMonitorConfig struct {
@@ -264,6 +266,11 @@ type IPCStartupConfig struct {
 	DarkMode          bool `json:"DarkMode"`
 }
 
+type IPCClassIslandConfig struct {
+	Enabled     bool   `json:"Enabled"`
+	ProfilePath string `json:"ProfilePath"`
+}
+
 // configToIPC 把 Go Config 转换成 IPC 结构，敏感字段打码。
 func configToIPC(c *Config) IPCConfig {
 	out := IPCConfig{
@@ -285,6 +292,10 @@ func configToIPC(c *Config) IPCConfig {
 			StartMenuShortcut: c.StartMenuLink,
 			IpcPort:           c.IPCPort,
 			DarkMode:          c.DarkMode,
+		},
+		ClassIsland: IPCClassIslandConfig{
+			Enabled:     c.ClassIslandEnabled,
+			ProfilePath: c.ClassIslandPath,
 		},
 	}
 	if out.AI.ApiKey != "" {
@@ -321,6 +332,10 @@ func (c *Config) applyIPC(in IPCConfig) {
 	c.AutoStart = in.Startup.AutoStart
 	c.StartMenuLink = in.Startup.StartMenuShortcut
 	c.DarkMode = in.Startup.DarkMode
+	c.ClassIslandEnabled = in.ClassIsland.Enabled
+	if in.ClassIsland.ProfilePath != "" {
+		c.ClassIslandPath = in.ClassIsland.ProfilePath
+	}
 	if in.Startup.IpcPort > 0 {
 		c.IPCPort = in.Startup.IpcPort
 	}
@@ -685,4 +700,22 @@ func handleSystemStartMenu(w http.ResponseWriter, r *http.Request) {
 		ipcLog.Info("[IPC] 已移除开始菜单快捷方式")
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
+}
+
+// GET /api/classisland
+func handleClassIsland(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if ipcConfig == nil {
+		writeErr(w, http.StatusInternalServerError, "config 未初始化")
+		return
+	}
+	if !ipcConfig.ClassIslandEnabled {
+		writeOK(w, ClassIslandState{Connected: false, Error: "ClassIsland 联动未启用"})
+		return
+	}
+	state := getClassIslandState(ipcConfig.ClassIslandPath)
+	writeOK(w, state)
 }

@@ -31,6 +31,7 @@
                 <ListBoxItem Content="文件元数据" />
                 <ListBoxItem Content="日志" />
                 <ListBoxItem Content="外观" />
+                <ListBoxItem Content="ClassIsland" />
             </ListBox>
 
             <Grid Grid.Column="1" x:Name="ContentArea" Margin="6">
@@ -162,6 +163,19 @@
                         <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
                                    Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
+                        <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="Page7" IsVisible="False">
+                    <StackPanel Spacing="10" Margin="8">
+                        <TextBlock Text="ClassIsland 联动" FontWeight="Bold" FontSize="18" />
+                        <CheckBox Content="启用 ClassIsland 联动" IsChecked="{Binding ClassIslandEnabled}" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
+                                   Text="启用后读取 ClassIsland 课表，显示当前课程信息" />
+                        <TextBlock Text="ClassIsland 配置文件路径 (留空自动查找)" />
+                        <TextBox Text="{Binding ClassIslandPath}" Watermark="自动查找 %LOCALAPPDATA%\ClassIsland\Profiles\Profile.json" />
+                        <TextBlock Text="{Binding ClassIslandStatus}" FontWeight="Bold" Margin="0,8,0,0" />
                         <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
                     </StackPanel>
                 </ScrollViewer>

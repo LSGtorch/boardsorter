@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -14,6 +16,7 @@ public class BoardsorterClient
     private readonly HttpClient _http;
     private int _port;
     private string _lastError = "";
+    private static readonly string _exeDir = GetExeDirectory();
 
     public string LastError => _lastError;
     public int Port => _port;
@@ -27,32 +30,58 @@ public class BoardsorterClient
         _port = LoadPort();
     }
 
+    /// <summary>
+    /// 获取 exe 实际所在目录（兼容单文件发布）
+    /// </summary>
+    private static string GetExeDirectory()
+    {
+        // 优先用 ProcessPath（单文件发布也正确）
+        var p = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(p))
+        {
+            return Path.GetDirectoryName(p) ?? ".";
+        }
+        // 回退
+        return AppContext.BaseDirectory;
+    }
+
     private static int LoadPort()
     {
-        try
+        // 按优先级查找 data/ipc.json
+        var searchPaths = new[]
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "data", "ipc.json");
-            if (!File.Exists(path))
+            Path.Combine(_exeDir, "data", "ipc.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "data", "ipc.json"),
+        };
+
+        foreach (var path in searchPaths)
+        {
+            try
             {
-                // 还可能在 exe 同目录的 data 子目录（相对路径，取决于工作目录）
-                var alt = Path.Combine(Directory.GetCurrentDirectory(), "data", "ipc.json");
-                if (!File.Exists(alt))
+                if (!File.Exists(path)) continue;
+                var json = File.ReadAllText(path);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var v))
                 {
-                    return 59812;
+                    return v;
                 }
-                path = alt;
             }
-            var json = File.ReadAllText(path);
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var v))
-            {
-                return v;
-            }
+            catch { /* try next */ }
         }
-        catch
+
+        // 如果 ipc.json 还没生成，尝试候选端口 59812-59820
+        var candidatePorts = new[] { 59812, 59813, 59814, 59815, 59816, 59817, 59818, 59819, 59820 };
+        foreach (var port in candidatePorts)
         {
-            // ignored
+            try
+            {
+                using var c = new System.Net.Sockets.TcpClient();
+                c.ConnectAsync("127.0.0.1", port).Wait(TimeSpan.FromMilliseconds(300));
+                return port;
+            }
+            catch { /* try next */ }
         }
+
         return 59812;
     }
 
@@ -276,6 +305,20 @@ public class BoardsorterClient
         {
             _lastError = ex.Message;
             return false;
+        }
+    }
+
+    public async Task<ClassIslandState> GetClassIslandAsync()
+    {
+        try
+        {
+            var data = await GetDataAsync<ClassIslandState>($"{BaseUrl}/api/classisland");
+            return data ?? new ClassIslandState();
+        }
+        catch (Exception ex)
+        {
+            _lastError = ex.Message;
+            return new ClassIslandState();
         }
     }
 }

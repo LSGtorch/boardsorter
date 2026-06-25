@@ -69,6 +69,16 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    // ClassIsland 联动
+    [ObservableProperty]
+    private string _classIslandStatus = "";
+
+    [ObservableProperty]
+    private bool _classIslandEnabled;
+
+    [ObservableProperty]
+    private string _classIslandPath = "";
+
     [ObservableProperty]
     private bool _autoRefresh;
 
@@ -134,11 +144,14 @@ public partial class MainWindowViewModel : ViewModelBase
             StartMenuShortcut = cfg.Startup.StartMenuShortcut;
             IpcPort = cfg.Startup.IpcPort;
             DarkMode = cfg.Startup.DarkMode;
+            ClassIslandEnabled = cfg.ClassIsland.Enabled;
+            ClassIslandPath = cfg.ClassIsland.ProfilePath;
         }
 
         await RefreshTermsAsync();
         await RefreshFilesAsync();
         await RefreshLogsAsync();
+        await RefreshClassIslandAsync();
 
         LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
     }
@@ -176,6 +189,23 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    private async Task RefreshClassIslandAsync()
+    {
+        var state = await _client.GetClassIslandAsync();
+        if (state.Connected && !string.IsNullOrEmpty(state.CurrentClass))
+        {
+            ClassIslandStatus = $"当前: {state.CurrentClass}" + (string.IsNullOrEmpty(state.NextClass) ? "" : $"  下一节: {state.NextClass}");
+        }
+        else if (!string.IsNullOrEmpty(state.Error))
+        {
+            ClassIslandStatus = state.Error;
+        }
+        else
+        {
+            ClassIslandStatus = "未连接";
+        }
+    }
+
     [RelayCommand]
     private async Task SaveConfigAsync()
     {
@@ -203,6 +233,11 @@ public partial class MainWindowViewModel : ViewModelBase
                 StartMenuShortcut = StartMenuShortcut,
                 IpcPort = IpcPort,
                 DarkMode = DarkMode
+            },
+            ClassIsland = new ClassIslandConfig
+            {
+                Enabled = ClassIslandEnabled,
+                ProfilePath = ClassIslandPath
             }
         };
         var ok = await _client.UpdateConfigAsync(cfg);

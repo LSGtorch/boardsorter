@@ -7,6 +7,7 @@ public class ConfigModel
     public MonitorConfig Monitor { get; set; } = new();
     public AIConfig AI { get; set; } = new();
     public StartupConfig Startup { get; set; } = new();
+    public ClassIslandConfig ClassIsland { get; set; } = new();
 }
 
 public class MonitorConfig
@@ -39,6 +40,21 @@ public class StartupConfig
     public bool StartMenuShortcut { get; set; }
     public int IpcPort { get; set; }
     public bool DarkMode { get; set; }
+}
+
+public class ClassIslandConfig
+{
+    public bool Enabled { get; set; }
+    public string ProfilePath { get; set; } = "";
+}
+
+public class ClassIslandState
+{
+    public bool Connected { get; set; }
+    public string CurrentClass { get; set; } = "";
+    public string NextClass { get; set; } = "";
+    public string ProfilePath { get; set; } = "";
+    public string Error { get; set; } = "";
 }
 
 public class TermEntry

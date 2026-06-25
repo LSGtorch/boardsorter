@@ -44,3 +44,8 @@ func getStartMenuStartUpPath() (string, error) {
 }
 
 var errNotWindows = fmt.Errorf("system integration is only supported on Windows")
+
+// isConsoleAttached 非 Windows 平台始终返回 true（默认有控制台）。
+func isConsoleAttached() bool {
+	return true
+}

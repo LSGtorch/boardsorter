@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Avalonia;
 using Avalonia.Media;
 
@@ -6,16 +7,34 @@ namespace BoardsorterConfig;
 
 internal static class Program
 {
+    private static Mutex? _mutex;
+
     [STAThread]
-    public static void Main(string[] args) =>
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    public static void Main(string[] args)
+    {
+        // 防止重复启动 GUI
+        _mutex = new Mutex(true, "BoardsorterConfig_UI_SingleInstance", out bool createdNew);
+        if (!createdNew)
+        {
+            // 已有实例在运行，直接退出
+            return;
+        }
+
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            _mutex?.ReleaseMutex();
+            _mutex?.Dispose();
+        }
+    }
 
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            // 优先用系统中文字体渲染（FluentAvalonia 默认 Inter 对中文支持差），
-            // 找不到再回退到 Inter / Segoe UI。Win10/11 自带 Microsoft YaHei UI。
             .With(new FontManagerOptions
             {
                 DefaultFamilyName = "Microsoft YaHei UI,Microsoft YaHei,Segoe UI,Inter"

@@ -5,6 +5,7 @@ package main
 // system_windows.go 实现 boardsorter 在 Windows 平台上的系统集成：
 //   1. 开机自启动（HKCU\Software\Microsoft\Windows\CurrentVersion\Run）
 //   2. 开始菜单快捷方式（IShellLinkW + IPersistFile, COM via ole32.CoCreateInstance）
+//   3. 控制台检测（GUI 模式 vs 控制台模式）
 //
 // 全部使用 syscall 直接调用 Windows API，不依赖任何第三方包。
 
@@ -472,4 +473,20 @@ func RemoveStartMenuShortcuts(appName string) error {
 		return fmt.Errorf("failed to remove programs shortcut: %w", err)
 	}
 	return nil
+}
+
+// =============================================================================
+// 4. 控制台检测
+// =============================================================================
+
+var (
+	modKernel32            = syscall.NewLazyDLL("Kernel32.dll")
+	procGetConsoleWindow   = modKernel32.NewProc("GetConsoleWindow")
+)
+
+// isConsoleAttached 检测当前进程是否附加了控制台窗口。
+// GUI 模式（-H windowsgui）编译时无控制台，返回 false。
+func isConsoleAttached() bool {
+	hwnd, _, _ := procGetConsoleWindow.Call()
+	return hwnd != 0
 }
