@@ -1,84 +1,74 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"path/filepath"
-	"strings"
+	"sync"
 	"time"
 )
 
-// ClassIslandNotifier 分类完成时向 ClassIsland 发送通知
+// ClassIslandNotifier 管理分类通知队列，供 GUI 轮询
 type ClassIslandNotifier struct {
-	enabled    bool
-	apiURL     string
-	template   string
-	httpClient *http.Client
-	logFn      func(string, ...interface{})
+	mu       sync.Mutex
+	enabled  bool
+	queue    []ClassIslandNotification
+	maxSize  int
+}
+
+// ClassIslandNotification 单条分类通知
+type ClassIslandNotification struct {
+	Time     string `json:"time"`
+	FileName string `json:"file_name"`
+	Subject  string `json:"subject"`
 }
 
 // NewClassIslandNotifier 创建通知器
-func NewClassIslandNotifier(enabled bool, apiURL, template string, logFn func(string, ...interface{})) *ClassIslandNotifier {
-	if apiURL == "" {
-		apiURL = "http://localhost:5000"
-	}
-	if template == "" {
-		template = "📁 {filename} → {subject}"
-	}
+func NewClassIslandNotifier(enabled bool) *ClassIslandNotifier {
 	return &ClassIslandNotifier{
-		enabled:  enabled,
-		apiURL:   strings.TrimRight(apiURL, "/"),
-		template: template,
-		httpClient: &http.Client{
-			Timeout: 3 * time.Second,
-		},
-		logFn: logFn,
+		enabled: enabled,
+		queue:   make([]ClassIslandNotification, 0, 64),
+		maxSize: 100,
 	}
 }
 
-// Notify 发送分类通知
-func (n *ClassIslandNotifier) Notify(filePath, subject, category string) {
+// SetEnabled 设置启用状态
+func (n *ClassIslandNotifier) SetEnabled(enabled bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.enabled = enabled
+}
+
+// IsEnabled 返回是否启用
+func (n *ClassIslandNotifier) IsEnabled() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.enabled
+}
+
+// Notify 添加一条分类通知到队列
+func (n *ClassIslandNotifier) Notify(fileName, subject string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if !n.enabled {
 		return
 	}
-
-	fileName := filepath.Base(filePath)
-	msg := strings.ReplaceAll(n.template, "{filename}", fileName)
-	msg = strings.ReplaceAll(msg, "{subject}", subject)
-	msg = strings.ReplaceAll(msg, "{category}", category)
-
-	// ClassIsland 通知 API 格式
-	body := map[string]string{
-		"title":   "boardsorter 文件分类",
-		"content": msg,
+	n.queue = append(n.queue, ClassIslandNotification{
+		Time:     time.Now().Format("15:04:05"),
+		FileName: fileName,
+		Subject:  subject,
+	})
+	if len(n.queue) > n.maxSize {
+		n.queue = n.queue[len(n.queue)-n.maxSize:]
 	}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return
-	}
-
-	go func() {
-		resp, err := n.httpClient.Post(
-			n.apiURL+"/api/notification",
-			"application/json",
-			bytes.NewReader(jsonBody),
-		)
-		if err != nil {
-			if n.logFn != nil {
-				n.logFn("[DEBUG] ClassIsland 通知发送失败: %v", err)
-			}
-			return
-		}
-		resp.Body.Close()
-		if n.logFn != nil {
-			n.logFn("[INFO] ClassIsland 通知已发送: %s", msg)
-		}
-	}()
 }
 
-// IsEnabled 返回通知是否启用
-func (n *ClassIslandNotifier) IsEnabled() bool {
-	return n.enabled
+// Drain 取出所有待发送通知并清空队列
+func (n *ClassIslandNotifier) Drain() []ClassIslandNotification {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if len(n.queue) == 0 {
+		return nil
+	}
+	result := make([]ClassIslandNotification, len(n.queue))
+	copy(result, n.queue)
+	n.queue = n.queue[:0]
+	return result
 }

@@ -44,8 +44,16 @@ public class StartupConfig
 
 public class ClassIslandConfig
 {
-    public bool Enabled { get; set; }
-    public string ProfilePath { get; set; } = "";
+    public bool NotifyEnabled { get; set; }
+    public string NotifyURL { get; set; } = "";
+    public string NotifyTemplate { get; set; } = "";
+}
+
+public class ClassIslandNotification
+{
+    public string Time { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string Subject { get; set; } = "";
 }
 
 public class ClassIslandState

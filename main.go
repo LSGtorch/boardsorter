@@ -277,7 +277,8 @@ func startServer(cfg *Config, log *Logger, noIPC bool) {
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
 	}
-	port, err := StartIPCServer(cfg, termDB, metadata, class, log, mon, delDeleter, onStop)
+	ciNotifier := NewClassIslandNotifier(cfg.ClassIslandNotifyEnabled)
+	port, err := StartIPCServer(cfg, termDB, metadata, class, log, mon, delDeleter, ciNotifier, onStop)
 	if err != nil {
 		log.Error("启动IPC服务失败: %v", err)
 	} else {

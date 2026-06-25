@@ -50,7 +50,7 @@ type Config struct {
 
 	// ClassIsland 通知配置
 	ClassIslandNotifyEnabled  bool   // 是否启用分类通知
-	ClassIslandNotifyURL      string // ClassIsland API 地址
+	ClassIslandNotifyURL      string // ClassIsland 导航 URI（通过 IPC 调用 IPublicUriNavigationService）
 	ClassIslandNotifyTemplate string // 通知模板
 
 	// 派生字段
@@ -558,7 +558,7 @@ var allConfigFields = []configFieldSpec{
 	// [UI配置] - v1.3 新增
 	{Section: "UI配置", Key: "深色模式", NewInVersion: "v1.3"},
 
-	// [ClassIsland通知] - v1.3 新增
+	// [ClassIsland通知] - v1.3 新增（通过 dotnetCampus.Ipc 命名管道通信）
 	{Section: "ClassIsland通知", Key: "启用通知", NewInVersion: "v1.3"},
 	{Section: "ClassIsland通知", Key: "API地址", NewInVersion: "v1.3"},
 	{Section: "ClassIsland通知", Key: "通知模板", NewInVersion: "v1.3"},
@@ -627,7 +627,7 @@ func defaultValueForField(section, key string) string {
 		case "启用通知":
 			return "false"
 		case "API地址":
-			return "http://localhost:5000"
+			return "classisland://app/"
 		case "通知模板":
 			return "{filename} → {subject}"
 		}

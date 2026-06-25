@@ -22,6 +22,7 @@ var (
 	ipcLog        *Logger
 	ipcMonitor    *Monitor
 	ipcDelDeleter *DelayedDeleter
+	ipcCINotifier *ClassIslandNotifier
 )
 
 // 辅助函数占位：实际实现由 main.go 在 init() 中赋值
@@ -84,6 +85,7 @@ func StartIPCServer(
 	log *Logger,
 	monitor *Monitor,
 	deleter *DelayedDeleter,
+	ciNotifier *ClassIslandNotifier,
 	onStopCb func(),
 ) (int, error) {
 	ipcConfig = cfg
@@ -93,6 +95,7 @@ func StartIPCServer(
 	ipcLog = log
 	ipcMonitor = monitor
 	ipcDelDeleter = deleter
+	ipcCINotifier = ciNotifier
 	if onStopCb != nil {
 		onStop = onStopCb
 	}
@@ -111,7 +114,7 @@ func StartIPCServer(
 	mux.HandleFunc("/api/decay", corsHandler(handleDecay))
 	mux.HandleFunc("/api/stop", corsHandler(handleStop))
 	mux.HandleFunc("/api/system/startmenu", corsHandler(handleSystemStartMenu))
-	mux.HandleFunc("/api/classisland", corsHandler(handleClassIsland))
+	mux.HandleFunc("/api/classisland/notifications", corsHandler(handleClassIslandNotifications))
 
 	// 顺序尝试候选端口
 	var listener net.Listener
@@ -334,10 +337,9 @@ func (c *Config) applyIPC(in IPCConfig) {
 	c.AutoStart = in.Startup.AutoStart
 	c.StartMenuLink = in.Startup.StartMenuShortcut
 	c.DarkMode = in.Startup.DarkMode
-	c.ClassIslandEnabled = in.ClassIsland.Enabled
-	if in.ClassIsland.ProfilePath != "" {
-		c.ClassIslandPath = in.ClassIsland.ProfilePath
-	}
+	c.ClassIslandNotifyEnabled = in.ClassIsland.NotifyEnabled
+	c.ClassIslandNotifyURL = in.ClassIsland.NotifyURL
+	c.ClassIslandNotifyTemplate = in.ClassIsland.NotifyTemplate
 	if in.Startup.IpcPort > 0 {
 		c.IPCPort = in.Startup.IpcPort
 	}
@@ -364,13 +366,25 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		// APIKey 为 "***" 时保留原值（在 applyIPC 内部处理）
 		oldWatch := ipcConfig.WatchFolder
-		ipcConfig.applyIPC(newIPCCfg)
-		// 派生字段重新计算
-		ipcConfig.ReadableExtList = parseExtList(ipcConfig.ReadableExts)
-		ipcConfig.ArchiveExtList = parseExtList(ipcConfig.ArchiveExts)
-		if err := ipcConfig.Validate(); err != nil {
+
+		// 先验证再 apply：在临时副本上验证，避免部分修改
+		tempCfg := *ipcConfig
+		tempCfg.applyIPC(newIPCCfg)
+		tempCfg.ReadableExtList = parseExtList(tempCfg.ReadableExts)
+		tempCfg.ArchiveExtList = parseExtList(tempCfg.ArchiveExts)
+		if err := tempCfg.Validate(); err != nil {
 			writeErr(w, http.StatusBadRequest, "配置无效: "+err.Error())
 			return
+		}
+
+		// 验证通过，正式 apply
+		ipcConfig.applyIPC(newIPCCfg)
+		ipcConfig.ReadableExtList = parseExtList(ipcConfig.ReadableExts)
+		ipcConfig.ArchiveExtList = parseExtList(ipcConfig.ArchiveExts)
+
+		// 同步 ClassIsland 通知器状态
+		if ipcCINotifier != nil {
+			ipcCINotifier.SetEnabled(ipcConfig.ClassIslandNotifyEnabled)
 		}
 
 		// 若监控目录变化则重启 Monitor
@@ -388,16 +402,17 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 
 // restartMonitor 用最新 cfg 的 WatchFolder 重新创建 Monitor
 func restartMonitor(cfg *Config) {
-	if ipcMonitor != nil {
-		ipcMonitor.Stop()
-	}
 	if ipcClassifier == nil || ipcLog == nil {
 		return
 	}
+	// 先建新 Monitor，再停旧的，避免新建失败时监控丢失
 	newMon, err := NewMonitor(cfg.WatchFolder, ipcClassifier.ClassifyFile, ipcLog.Raw)
 	if err != nil {
 		ipcLog.Error("重启文件监控失败: %v", err)
 		return
+	}
+	if ipcMonitor != nil {
+		ipcMonitor.Stop()
 	}
 	newMon.Start()
 	ipcMonitor = newMon
@@ -704,20 +719,19 @@ func handleSystemStartMenu(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
 }
 
-// GET /api/classisland
-func handleClassIsland(w http.ResponseWriter, r *http.Request) {
+// GET /api/classisland/notifications — 取出待发送通知
+func handleClassIslandNotifications(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if ipcConfig == nil {
-		writeErr(w, http.StatusInternalServerError, "config 未初始化")
+	if ipcCINotifier == nil {
+		writeOK(w, []ClassIslandNotification{})
 		return
 	}
-	if !ipcConfig.ClassIslandEnabled {
-		writeOK(w, ClassIslandState{Connected: false, Error: "ClassIsland 联动未启用"})
-		return
+	notifications := ipcCINotifier.Drain()
+	if notifications == nil {
+		notifications = []ClassIslandNotification{}
 	}
-	state := getClassIslandState(ipcConfig.ClassIslandPath)
-	writeOK(w, state)
+	writeOK(w, notifications)
 }

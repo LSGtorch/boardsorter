@@ -229,6 +229,11 @@ func (c *Classifier) archiveAndTrack(filePath, target string, keywords []string,
 
 	// 加入延迟删除队列
 	c.deleter.Add(filePath)
+
+	// ClassIsland 通知
+	if ipcCINotifier != nil && ipcCINotifier.IsEnabled() {
+		ipcCINotifier.Notify(filepath.Base(filePath), target)
+	}
 }
 
 // scanAndRegisterManualFiles 扫描用户手动放入的文件

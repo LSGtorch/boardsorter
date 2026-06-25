@@ -1,9 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
-using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using BoardsorterConfig.Models;
 using BoardsorterConfig.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,7 +14,8 @@ namespace BoardsorterConfig.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly BoardsorterClient _client = new();
-    private Timer? _autoRefreshTimer;
+    private readonly ClassIslandIpcBridge _ciBridge = new();
+    private DispatcherTimer? _autoRefreshTimer;
 
     [ObservableProperty]
     private string _connectionStatus = "未连接";
@@ -62,22 +63,29 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnDarkModeChanged(bool value)
     {
-        var app = Application.Current;
-        if (app is not null)
+        // 确保在 UI 线程切换主题
+        Dispatcher.UIThread.Post(() =>
         {
-            app.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
-        }
+            var app = Application.Current;
+            if (app is not null)
+            {
+                app.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+            }
+        });
     }
 
-    // ClassIsland 联动
+    // ClassIsland 通知
     [ObservableProperty]
     private string _classIslandStatus = "";
 
     [ObservableProperty]
-    private bool _classIslandEnabled;
+    private bool _classIslandNotifyEnabled;
 
     [ObservableProperty]
-    private string _classIslandPath = "";
+    private string _classIslandNotifyURL = "";
+
+    [ObservableProperty]
+    private string _classIslandNotifyTemplate = "";
 
     [ObservableProperty]
     private bool _autoRefresh;
@@ -86,18 +94,20 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (value)
         {
-            _autoRefreshTimer = new Timer(_ =>
-            {
-                _ = Task.Run(async () =>
+            _autoRefreshTimer = new DispatcherTimer(
+                TimeSpan.FromSeconds(5),
+                DispatcherPriority.Background,
+                async (s, e) =>
                 {
                     await RefreshTermsAsync();
                     await RefreshLogsAsync();
+                    await PollClassIslandNotificationsAsync();
                 });
-            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5));
+            _autoRefreshTimer.Start();
         }
         else
         {
-            _autoRefreshTimer?.Dispose();
+            _autoRefreshTimer?.Stop();
             _autoRefreshTimer = null;
         }
     }
@@ -144,14 +154,25 @@ public partial class MainWindowViewModel : ViewModelBase
             StartMenuShortcut = cfg.Startup.StartMenuShortcut;
             IpcPort = cfg.Startup.IpcPort;
             DarkMode = cfg.Startup.DarkMode;
-            ClassIslandEnabled = cfg.ClassIsland.Enabled;
-            ClassIslandPath = cfg.ClassIsland.ProfilePath;
+            ClassIslandNotifyEnabled = cfg.ClassIsland.NotifyEnabled;
+            ClassIslandNotifyURL = cfg.ClassIsland.NotifyURL;
+            ClassIslandNotifyTemplate = cfg.ClassIsland.NotifyTemplate;
         }
 
         await RefreshTermsAsync();
         await RefreshFilesAsync();
         await RefreshLogsAsync();
-        await RefreshClassIslandAsync();
+
+        // 尝试连接 ClassIsland
+        if (ClassIslandNotifyEnabled)
+        {
+            await _ciBridge.ConnectAsync();
+            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
+        }
+        else
+        {
+            ClassIslandStatus = "通知未启用";
+        }
 
         LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
     }
@@ -189,20 +210,23 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private async Task RefreshClassIslandAsync()
+    /// <summary>
+    /// 轮询 Go 端通知队列，取出后通过 dotnetCampus.Ipc 发送到 ClassIsland
+    /// </summary>
+    private async Task PollClassIslandNotificationsAsync()
     {
-        var state = await _client.GetClassIslandAsync();
-        if (state.Connected && !string.IsNullOrEmpty(state.CurrentClass))
+        if (!ClassIslandNotifyEnabled) return;
+        if (!_ciBridge.Connected)
         {
-            ClassIslandStatus = $"当前: {state.CurrentClass}" + (string.IsNullOrEmpty(state.NextClass) ? "" : $"  下一节: {state.NextClass}");
+            await _ciBridge.ConnectAsync();
+            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
+            if (!_ciBridge.Connected) return;
         }
-        else if (!string.IsNullOrEmpty(state.Error))
+
+        var notifications = await _client.GetClassIslandNotificationsAsync();
+        foreach (var n in notifications)
         {
-            ClassIslandStatus = state.Error;
-        }
-        else
-        {
-            ClassIslandStatus = "未连接";
+            _ciBridge.SendNotification(n.FileName, n.Subject, ClassIslandNotifyURL, ClassIslandNotifyTemplate);
         }
     }
 
@@ -236,12 +260,25 @@ public partial class MainWindowViewModel : ViewModelBase
             },
             ClassIsland = new ClassIslandConfig
             {
-                Enabled = ClassIslandEnabled,
-                ProfilePath = ClassIslandPath
+                NotifyEnabled = ClassIslandNotifyEnabled,
+                NotifyURL = ClassIslandNotifyURL,
+                NotifyTemplate = ClassIslandNotifyTemplate
             }
         };
         var ok = await _client.UpdateConfigAsync(cfg);
         LastActivity = ok ? "配置已保存" : $"保存失败: {_client.LastError}";
+
+        // 保存后同步 ClassIsland 连接状态
+        if (ClassIslandNotifyEnabled)
+        {
+            await _ciBridge.ConnectAsync();
+            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
+        }
+        else
+        {
+            _ciBridge.Dispose();
+            ClassIslandStatus = "通知未启用";
+        }
     }
 
     [RelayCommand]

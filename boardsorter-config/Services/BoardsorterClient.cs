@@ -308,17 +308,17 @@ public class BoardsorterClient
         }
     }
 
-    public async Task<ClassIslandState> GetClassIslandAsync()
+    public async Task<List<ClassIslandNotification>> GetClassIslandNotificationsAsync()
     {
         try
         {
-            var data = await GetDataAsync<ClassIslandState>($"{BaseUrl}/api/classisland");
-            return data ?? new ClassIslandState();
+            var data = await GetDataAsync<List<ClassIslandNotification>>($"{BaseUrl}/api/classisland/notifications");
+            return data ?? new List<ClassIslandNotification>();
         }
         catch (Exception ex)
         {
             _lastError = ex.Message;
-            return new ClassIslandState();
+            return new List<ClassIslandNotification>();
         }
     }
 }
