@@ -498,15 +498,31 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	all := ipcMetadata.AllEntries()
-	filtered := make([]*FileEntry, 0, len(all))
+	// 构建 IPC 友好结构，字段名与 C# FileMeta 对齐
+	type ipcFileItem struct {
+		Path       string `json:"path"`
+		Subject    string `json:"subject"`
+		Size       int64  `json:"size"`
+		ModifiedAt string `json:"modified_at"`
+	}
+	filtered := make([]ipcFileItem, 0, len(all))
 	for _, e := range all {
 		if subject != "" && e.Subject != subject {
 			continue
 		}
-		filtered = append(filtered, e)
+		var fileSize int64
+		if info, err := os.Stat(e.CurrentPath); err == nil {
+			fileSize = info.Size()
+		}
+		filtered = append(filtered, ipcFileItem{
+			Path:       e.CurrentPath,
+			Subject:    e.Subject,
+			Size:       fileSize,
+			ModifiedAt: e.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
 	}
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+		return filtered[i].ModifiedAt > filtered[j].ModifiedAt
 	})
 
 	total := len(filtered)

@@ -38,6 +38,9 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<RuleItem> Rules { get; } = new();
 
     [ObservableProperty]
+    private RuleItem? _selectedRule;
+
+    [ObservableProperty]
     private string _aiEndpoint = "";
 
     [ObservableProperty]
@@ -48,6 +51,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _aiReasoningLevel = "medium";
+
+    public string[] AiReasoningLevels { get; } = ["low", "medium", "high"];
 
     [ObservableProperty]
     private string _aiPrompt = "";
@@ -82,13 +87,13 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _classIslandNotifyEnabled;
 
     [ObservableProperty]
-    private string _classIslandNotifyURL = "";
+    private string _classIslandNotifyURL = "classisland://app/";
 
     [ObservableProperty]
-    private string _classIslandNotifyTemplate = "";
+    private string _classIslandNotifyTemplate = "{filename} → {subject}";
 
     [ObservableProperty]
-    private bool _autoRefresh;
+    private bool _autoRefresh = true; // 默认启用自动刷新
 
     partial void OnAutoRefreshChanged(bool value)
     {
@@ -125,6 +130,23 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         IpcPort = _client.Port;
         _ = RefreshAllAsync();
+        // 自动刷新默认启用，启动定时器
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _autoRefreshTimer = new DispatcherTimer(
+            TimeSpan.FromSeconds(5),
+            DispatcherPriority.Background,
+            async (s, e) =>
+            {
+                await RefreshTermsAsync();
+                await RefreshFilesAsync();
+                await RefreshLogsAsync();
+                await PollClassIslandNotificationsAsync();
+            });
+        _autoRefreshTimer.Start();
     }
 
     [RelayCommand]
@@ -288,11 +310,12 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void RemoveRule(RuleItem? item)
+    private void RemoveSelectedRule()
     {
-        if (item is not null)
+        if (SelectedRule is not null)
         {
-            Rules.Remove(item);
+            Rules.Remove(SelectedRule);
+            SelectedRule = null;
         }
     }
 

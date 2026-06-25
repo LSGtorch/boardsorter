@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace BoardsorterConfig.Models;
 
@@ -74,9 +75,13 @@ public class TermEntry
 
 public class FileMeta
 {
+    [JsonPropertyName("path")]
     public string Path { get; set; } = "";
+    [JsonPropertyName("subject")]
     public string Subject { get; set; } = "";
+    [JsonPropertyName("size")]
     public long Size { get; set; }
+    [JsonPropertyName("modified_at")]
     public string ModifiedAt { get; set; } = "";
 }
 

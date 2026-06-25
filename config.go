@@ -92,6 +92,8 @@ func LoadConfig(path string) (*Config, error) {
 		ModelName:        defaultModelName,
 		ReasoningEffort:  defaultReasoningEffort,
 		IPCBindHost:      defaultIPCBindHost,
+		ClassIslandNotifyURL:      "classisland://app/",
+		ClassIslandNotifyTemplate: "{filename} → {subject}",
 	}
 
 	f, err := os.Open(path)

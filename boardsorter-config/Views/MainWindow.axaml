@@ -9,6 +9,24 @@
         x:DataType="vm:MainWindowViewModel"
         Width="950" Height="650"
         Title="Boardsorter 配置">
+    <Window.Styles>
+        <Style Selector="DataGrid">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        </Style>
+        <Style Selector="DataGridCell">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+        </Style>
+        <Style Selector="DataGridColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+        </Style>
+        <Style Selector="TextBlock.header">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+    </Window.Styles>
     <DockPanel>
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SystemControlBackgroundAltLowBrush}" Padding="8,4">
             <Grid ColumnDefinitions="*,*">
@@ -44,7 +62,7 @@
                         <TextBlock Text="学科类目 (逗号分隔)" />
                         <TextBox Text="{Binding SubjectsText}" Watermark="数学, 物理, 化学" />
                         <TextBlock Text="规则" Margin="0,8,0,0" />
-                        <DataGrid ItemsSource="{Binding Rules}" AutoGenerateColumns="False" Height="180">
+                        <DataGrid ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" AutoGenerateColumns="False" Height="180">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="模式" Binding="{Binding Pattern}" Width="*" />
                                 <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="120" />
@@ -53,6 +71,7 @@
                         </DataGrid>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Button Content="新增规则" Command="{Binding AddRuleCommand}" />
+                            <Button Content="删除选中" Command="{Binding RemoveSelectedRuleCommand}" />
                             <Button Content="保存" Command="{Binding SaveConfigCommand}" />
                         </StackPanel>
                     </StackPanel>
@@ -67,11 +86,9 @@
                         <TextBlock Text="模型" />
                         <TextBox Text="{Binding AiModel}" Watermark="gpt-4o-mini" />
                         <TextBlock Text="推理等级" />
-                        <ComboBox SelectedItem="{Binding AiReasoningLevel}" HorizontalAlignment="Stretch">
-                            <ComboBoxItem>low</ComboBoxItem>
-                            <ComboBoxItem>medium</ComboBoxItem>
-                            <ComboBoxItem>high</ComboBoxItem>
-                        </ComboBox>
+                        <ComboBox ItemsSource="{Binding AiReasoningLevels}"
+                                  SelectedItem="{Binding AiReasoningLevel}"
+                                  HorizontalAlignment="Stretch" />
                         <TextBlock Text="提示词" />
                         <TextBox Text="{Binding AiPrompt}" AcceptsReturn="True" Height="160"
                                  Watermark="请根据以下文件名判断学科..." />
@@ -159,7 +176,7 @@
 
                 <ScrollViewer x:Name="Page6" IsVisible="False">
                     <StackPanel Spacing="10" Margin="8">
-                        <TextBlock Text="外观" FontWeight="Bold" FontSize="18" />
+                        <TextBlock Text="外观" Classes="header" />
                         <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
                                    Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
@@ -169,14 +186,14 @@
 
                 <ScrollViewer x:Name="Page7" IsVisible="False">
                     <StackPanel Spacing="10" Margin="8">
-                        <TextBlock Text="ClassIsland 通知" FontWeight="Bold" FontSize="18" />
+                        <TextBlock Text="ClassIsland 通知" Classes="header" />
                         <CheckBox Content="启用文件分类通知" IsChecked="{Binding ClassIslandNotifyEnabled}" />
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
                                    Text="文件被分类后，通过 dotnetCampus.Ipc 命名管道向 ClassIsland 发送通知。需 ClassIsland 在运行。" />
-                        <TextBlock Text="ClassIsland IPC 管道名" />
-                        <TextBox Text="{Binding ClassIslandNotifyURL}" Watermark="ClassIsland.IPC.v2.Server" />
+                        <TextBlock Text="通知 URI" />
+                        <TextBox Text="{Binding ClassIslandNotifyURL}" Watermark="classisland://app/" />
                         <TextBlock Text="通知模板" />
-                        <TextBox Text="{Binding ClassIslandNotifyTemplate}" Watermark="{}{filename} - {subject}" />
+                        <TextBox Text="{Binding ClassIslandNotifyTemplate}" Watermark="{}{filename} → {subject}" />
                         <TextBlock Text="{Binding ClassIslandStatus}" FontWeight="Bold" Margin="0,8,0,0" />
                         <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
                     </StackPanel>
