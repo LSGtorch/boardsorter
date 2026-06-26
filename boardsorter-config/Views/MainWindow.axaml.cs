@@ -59,10 +59,11 @@ public partial class MainWindow : Window
                 else
                 {
                     _pingFailCount++;
-                    if (_pingFailCount >= 3)
+                    // 不自动关闭窗口，只尝试重新连接
+                    if (_pingFailCount > 10)
                     {
-                        _pingTimer?.Stop();
-                        Close();
+                        _client.RefreshPort();
+                        _pingFailCount = 0;
                     }
                 }
             });
