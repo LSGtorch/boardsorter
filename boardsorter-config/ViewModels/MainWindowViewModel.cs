@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -15,8 +16,10 @@ namespace BoardsorterConfig.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly BoardsorterClient _client = new();
-    private readonly ClassIslandIpcBridge _ciBridge = new();
+    private readonly ToastNotifier _toast = new();
     private DispatcherTimer? _autoRefreshTimer;
+    private bool _isSaving;
+    private bool _isRefreshing;
 
     [ObservableProperty]
     private string _connectionStatus = "未连接";
@@ -36,7 +39,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _subjectsText = "";
 
-    // Rules - moved to 词条库页面
+    // Rules - 词条库页面折叠
     public ObservableCollection<RuleItem> Rules { get; } = new();
 
     [ObservableProperty]
@@ -70,7 +73,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnDarkModeChanged(bool value)
     {
-        // 确保在 UI 线程切换主题
         Dispatcher.UIThread.Post(() =>
         {
             var app = Application.Current;
@@ -81,15 +83,12 @@ public partial class MainWindowViewModel : ViewModelBase
         });
     }
 
-    // ClassIsland 通知
+    // 通知
     [ObservableProperty]
-    private string _classIslandStatus = "";
+    private bool _notifyEnabled;
 
     [ObservableProperty]
-    private bool _classIslandNotifyEnabled;
-
-    [ObservableProperty]
-    private bool _autoRefresh = true; // 默认启用自动刷新
+    private bool _autoRefresh = true;
 
     partial void OnAutoRefreshChanged(bool value)
     {
@@ -107,15 +106,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _termQuery = "";
 
-    /// <summary>
-    /// 科目筛选（空=全部）
-    /// </summary>
     [ObservableProperty]
     private string _subjectFilter = "";
 
-    /// <summary>
-    /// 可选科目列表（从配置加载）
-    /// </summary>
     [ObservableProperty]
     private ObservableCollection<string> _subjectOptions = new();
 
@@ -125,15 +118,17 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 选中词条 → 检索关联文件
+    /// 选中词条 -> 检索关联文件（同时传入科目做精确匹配）
     /// </summary>
     [ObservableProperty]
     private TermEntry? _selectedTerm;
 
     partial void OnSelectedTermChanged(TermEntry? value)
     {
-        if (value != null)
-            _ = SearchFilesByTermAsync(value.Term);
+        if (value != null && !string.IsNullOrEmpty(value.Term))
+            _ = SearchFilesByTermAsync(value.Term, value.Subject);
+        else
+            TermFiles.Clear();
     }
 
     [ObservableProperty]
@@ -161,7 +156,6 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         IpcPort = _client.Port;
         _ = RefreshAllAsync();
-        // 自动刷新默认启用，启动定时器
         if (AutoRefresh)
             StartAutoRefresh();
     }
@@ -177,7 +171,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 await RefreshTermsAsync();
                 await RefreshFilesAsync();
                 await RefreshLogsAsync();
-                await PollClassIslandNotificationsAsync();
+                await PollNotificationsAsync();
             });
         _autoRefreshTimer.Start();
     }
@@ -191,65 +185,61 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task RefreshAllAsync()
     {
-        LastActivity = "正在拉取状态...";
-        var ok = await _client.PingAsync();
-        ConnectionStatus = ok ? "已连接" : $"未连接 ({_client.LastError})";
-
-        var cfg = await _client.GetConfigAsync();
-        if (cfg is not null)
+        if (_isRefreshing) return;
+        _isRefreshing = true;
+        try
         {
-            WatchDir = cfg.Monitor.WatchDir;
-            ArchiveDir = cfg.Monitor.ArchiveDir;
-            SubjectsText = string.Join(", ", cfg.Monitor.Subjects);
-            Rules.Clear();
-            foreach (var r in cfg.Monitor.Rules)
+            LastActivity = "正在拉取状态...";
+            var ok = await _client.PingAsync();
+            ConnectionStatus = ok ? "已连接" : $"未连接 ({_client.LastError})";
+
+            var cfg = await _client.GetConfigAsync();
+            if (cfg is not null)
             {
-                Rules.Add(r);
+                WatchDir = cfg.Monitor.WatchDir;
+                ArchiveDir = cfg.Monitor.ArchiveDir;
+                SubjectsText = string.Join(", ", cfg.Monitor.Subjects);
+                Rules.Clear();
+                foreach (var r in cfg.Monitor.Rules)
+                {
+                    Rules.Add(r);
+                }
+                AiEndpoint = cfg.AI.Endpoint;
+                AiApiKey = cfg.AI.ApiKey;
+                AiModel = cfg.AI.Model;
+                AiReasoningLevel = cfg.AI.ReasoningLevel;
+                AiPrompt = cfg.AI.Prompt;
+                AutoStart = cfg.Startup.AutoStart;
+                StartMenuShortcut = cfg.Startup.StartMenuShortcut;
+                IpcPort = cfg.Startup.IpcPort;
+                DarkMode = cfg.Startup.DarkMode;
+                NotifyEnabled = false; // 默认关闭，由用户开启
+
+                SubjectOptions.Clear();
+                SubjectOptions.Add(""); // 空=全部
+                foreach (var s in cfg.Monitor.Subjects)
+                {
+                    if (!SubjectOptions.Contains(s))
+                        SubjectOptions.Add(s);
+                }
             }
-            AiEndpoint = cfg.AI.Endpoint;
-            AiApiKey = cfg.AI.ApiKey;
-            AiModel = cfg.AI.Model;
-            AiReasoningLevel = cfg.AI.ReasoningLevel;
-            AiPrompt = cfg.AI.Prompt;
-            AutoStart = cfg.Startup.AutoStart;
-            StartMenuShortcut = cfg.Startup.StartMenuShortcut;
-            IpcPort = cfg.Startup.IpcPort;
-            DarkMode = cfg.Startup.DarkMode;
-            ClassIslandNotifyEnabled = cfg.ClassIsland.NotifyEnabled;
 
-            // 更新科目列表
-            SubjectOptions.Clear();
-            SubjectOptions.Add(""); // 空=全部
-            foreach (var s in cfg.Monitor.Subjects)
-            {
-                if (!SubjectOptions.Contains(s))
-                    SubjectOptions.Add(s);
-            }
+            await RefreshTermsAsync();
+            await RefreshFilesAsync();
+            await RefreshLogsAsync();
+
+            LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
         }
-
-        await RefreshTermsAsync();
-        await RefreshFilesAsync();
-        await RefreshLogsAsync();
-
-        // 尝试连接 ClassIsland
-        if (ClassIslandNotifyEnabled)
+        finally
         {
-            await _ciBridge.ConnectAsync();
-            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
+            _isRefreshing = false;
         }
-        else
-        {
-            ClassIslandStatus = "通知未启用";
-        }
-
-        LastActivity = $"刷新于 {DateTime.Now:HH:mm:ss}";
     }
 
     [RelayCommand]
     private async Task RefreshTermsAsync()
     {
         var terms = await _client.SearchTermsAsync(TermQuery, SubjectFilter);
-        // 替换整个集合以保持 DataGrid 滚动位置稳定
         Terms = new ObservableCollection<TermEntry>(terms);
     }
 
@@ -257,7 +247,6 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task RefreshFilesAsync()
     {
         var files = await _client.ListFilesAsync(FileSubjectFilter);
-        // 替换整个集合以保持 DataGrid 滚动位置稳定
         Files = new ObservableCollection<FileMeta>(files);
     }
 
@@ -269,81 +258,88 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 根据选中的词条检索关联文件
+    /// 根据选中词条检索关联文件，同时传入term和subject做精确匹配
     /// </summary>
-    private async Task SearchFilesByTermAsync(string term)
+    private async Task SearchFilesByTermAsync(string term, string subject)
     {
-        if (string.IsNullOrEmpty(term))
-        {
-            TermFiles.Clear();
-            return;
-        }
-        var files = await _client.SearchFilesByTermAsync(term);
+        var files = await _client.SearchFilesByTermAsync(term, subject);
         TermFiles = new ObservableCollection<FileMeta>(files);
+    }
+
+    /// <summary>
+    /// 打开文件（系统默认程序）
+    /// </summary>
+    [RelayCommand]
+    private void OpenFile(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo(path)
+            {
+                UseShellExecute = true
+            };
+            proc.Start();
+        }
+        catch (Exception ex)
+        {
+            LastActivity = $"打开文件失败: {ex.Message}";
+        }
     }
 
     /// <summary>
     /// 轮询 Go 端通知队列，通过 Windows Toast 显示
     /// </summary>
-    private async Task PollClassIslandNotificationsAsync()
+    private async Task PollNotificationsAsync()
     {
-        if (!ClassIslandNotifyEnabled) return;
-
+        if (!NotifyEnabled) return;
         var notifications = await _client.GetClassIslandNotificationsAsync();
         foreach (var n in notifications)
         {
-            _ciBridge.SendNotification(n.FileName, n.Subject);
+            _toast.SendNotification(n.FileName, n.Subject);
         }
     }
 
     [RelayCommand]
     private async Task SaveConfigAsync()
     {
-        var cfg = new ConfigModel
+        if (_isSaving) return;
+        _isSaving = true;
+        try
         {
-            Monitor = new MonitorConfig
+            var cfg = new ConfigModel
             {
-                WatchDir = WatchDir,
-                ArchiveDir = ArchiveDir,
-                Subjects = new System.Collections.Generic.List<string>(
-                    (SubjectsText ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
-                Rules = new System.Collections.Generic.List<RuleItem>(Rules)
-            },
-            AI = new AIConfig
-            {
-                Endpoint = AiEndpoint,
-                ApiKey = AiApiKey,
-                Model = AiModel,
-                ReasoningLevel = AiReasoningLevel,
-                Prompt = AiPrompt
-            },
-            Startup = new StartupConfig
-            {
-                AutoStart = AutoStart,
-                StartMenuShortcut = StartMenuShortcut,
-                IpcPort = IpcPort,
-                DarkMode = DarkMode
-            },
-            ClassIsland = new ClassIslandConfig
-            {
-                NotifyEnabled = ClassIslandNotifyEnabled,
-                NotifyURL = "",
-                NotifyTemplate = ""
-            }
-        };
-        var ok = await _client.UpdateConfigAsync(cfg);
-        LastActivity = ok ? "配置已保存" : $"保存失败: {_client.LastError}";
-
-        // 保存后同步 ClassIsland 连接状态
-        if (ClassIslandNotifyEnabled)
-        {
-            await _ciBridge.ConnectAsync();
-            ClassIslandStatus = _ciBridge.Connected ? "已连接 ClassIsland" : $"ClassIsland: {_ciBridge.LastError}";
+                Monitor = new MonitorConfig
+                {
+                    WatchDir = WatchDir,
+                    ArchiveDir = ArchiveDir,
+                    Subjects = new System.Collections.Generic.List<string>(
+                        (SubjectsText ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+                    Rules = new System.Collections.Generic.List<RuleItem>(Rules)
+                },
+                AI = new AIConfig
+                {
+                    Endpoint = AiEndpoint,
+                    ApiKey = AiApiKey,
+                    Model = AiModel,
+                    ReasoningLevel = AiReasoningLevel,
+                    Prompt = AiPrompt
+                },
+                Startup = new StartupConfig
+                {
+                    AutoStart = AutoStart,
+                    StartMenuShortcut = StartMenuShortcut,
+                    IpcPort = IpcPort,
+                    DarkMode = DarkMode
+                }
+            };
+            var ok = await _client.UpdateConfigAsync(cfg);
+            LastActivity = ok ? "配置已保存" : $"保存失败: {_client.LastError}";
         }
-        else
+        finally
         {
-            _ciBridge.Dispose();
-            ClassIslandStatus = "通知未启用";
+            _isSaving = false;
         }
     }
 

@@ -48,10 +48,10 @@ type Config struct {
 	// UI配置
 	DarkMode bool // 深色模式
 
-	// ClassIsland 通知配置
-	ClassIslandNotifyEnabled  bool   // 是否启用分类通知
-	ClassIslandNotifyURL      string // ClassIsland 导航 URI（通过 IPC 调用 IPublicUriNavigationService）
-	ClassIslandNotifyTemplate string // 通知模板
+	// (已废弃) ClassIsland 配置 - 通知改为 Windows Toast，由 GUI 端处理
+	ClassIslandNotifyEnabled  bool
+	ClassIslandNotifyURL      string
+	ClassIslandNotifyTemplate string
 
 	// 派生字段
 	ReadableExtList []string
@@ -92,9 +92,7 @@ func LoadConfig(path string) (*Config, error) {
 		ModelName:        defaultModelName,
 		ReasoningEffort:  defaultReasoningEffort,
 		IPCBindHost:      defaultIPCBindHost,
-		ClassIslandNotifyURL:      "classisland://app/",
-		ClassIslandNotifyTemplate: "{filename} → {subject}",
-	}
+		}
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -560,7 +558,7 @@ var allConfigFields = []configFieldSpec{
 	// [UI配置] - v1.3 新增
 	{Section: "UI配置", Key: "深色模式", NewInVersion: "v1.3"},
 
-	// [ClassIsland通知] - v1.3 新增（通过 dotnetCampus.Ipc 命名管道通信）
+	// [ClassIsland通知] - 已废弃，保留兼容性读取
 	{Section: "ClassIsland通知", Key: "启用通知", NewInVersion: "v1.3"},
 	{Section: "ClassIsland通知", Key: "API地址", NewInVersion: "v1.3"},
 	{Section: "ClassIsland通知", Key: "通知模板", NewInVersion: "v1.3"},

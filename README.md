@@ -12,8 +12,10 @@
 - **图形配置界面**（Avalonia UI）：侧边栏导航，可视化配置
 - **开机自启动 + 开始菜单快捷方式**：任务管理器启动项
 - **深色模式 / 浅色模式**：实时切换
-- **Windows Toast 通知**：文件分类后弹出系统通知，无需 ClassIsland 即可工作
-- **系统托盘运行**：后台静默运行，托盘右键菜单打开 GUI 或退出
+- **Windows Toast 通知**：文件分类后弹出系统通知
+- **系统托盘运行**：后台静默运行，GUI 程序自带托盘图标（右键菜单显示/隐藏主界面、退出）
+- **双击行打开文件**：在文件列表中双击行或点击"打开"按钮，用系统默认程序打开文件
+- **思源黑体 UI**：配置界面使用 Source Han Sans SC（思源黑体）
 
 ## 使用
 
@@ -93,14 +95,11 @@ API地址 = classisland://app/
 
 ## 通知机制
 
-v1.3 开始使用 **Windows 原生 Toast 通知** 替代 ClassIsland IPC 导航：
+文件被分类后，配置 GUI 通过 HTTP 轮询 Go 后端的通知队列，通过 `Windows.UI.Notifications.ToastNotificationManager` 推送系统通知。
 
-- 文件被分类后，配置 GUI 通过 HTTP 轮询 Go 后端的通知队列
-- 收到通知后通过 `Windows.UI.Notifications.ToastNotificationManager` 推送系统通知
-- 不需要 ClassIsland 在后台运行，也不依赖其 IPC 接口
-- 可在"通知"页面启用/禁用
+可在"通知"页面启用/禁用。
 
-对于仍需与 ClassIsland 联动的场景，GUI 会尝试检测 ClassIsland 运行状态并显示在界面上，但通知推送独立于 ClassIsland。
+> v1.3+ 废弃了 ClassIsland IPC 导航方案（`IPublicUriNavigationService`），改为独立 Toast 通知。
 
 ## 项目结构
 
@@ -114,7 +113,6 @@ boardsorter/
 ├── termdb.go                # 词条数据库（BM25 搜索、衰减）
 ├── metadata.go              # 文件元数据（UUID 追踪、删除清理）
 ├── ai.go                    # AI 分类（OpenAI 兼容 API）
-├── classisland.go           # ClassIsland 通知队列
 ├── system_windows.go        # Windows 系统集成（自启动、快捷方式、控制台检测）
 ├── system_other.go          # 非 Windows 系统桩
 ├── go.mod / go.sum
@@ -130,7 +128,7 @@ boardsorter/
 │   └── Services/
 │       ├── BoardsorterClient.cs            # HTTP IPC 客户端
 │       ├── BoardsorterLauncher.cs          # 后端启动器
-│       └── ClassIslandIpcBridge.cs         # Windows Toast 通知桥接
+│       └── ToastNotifier.cs                # Windows Toast 通知
 ├── config.example.ini       # 配置文件模板
 └── README.md
 ```
@@ -173,7 +171,7 @@ GUI 通过 HTTP IPC 与 Go 主程序通信，端口写在 `data/ipc.json`。
 | POST | /api/decay | 触发词条衰减 |
 | POST | /api/stop | 优雅停止服务 |
 | POST | /api/system/startmenu | 管理开始菜单快捷方式 |
-| GET | /api/classisland/notifications | 获取待发送通知队列 |
+| GET | /api/notifications | 获取待发送通知队列 |
 
 ## 技术栈
 

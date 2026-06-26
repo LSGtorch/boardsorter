@@ -227,13 +227,11 @@ func (c *Classifier) archiveAndTrack(filePath, target string, keywords []string,
 	c.metadata.Add(entry)
 	c.logFn("[INFO] [元数据记录] UUID=%s, 路径=%s", newUUID, destPath)
 
+	// 推送通知到队列（GUI 轮询后通过 Windows Toast 显示）
+	PushNotification(filepath.Base(filePath), target)
+
 	// 加入延迟删除队列
 	c.deleter.Add(filePath)
-
-	// ClassIsland 通知
-	if ipcCINotifier != nil && ipcCINotifier.IsEnabled() {
-		ipcCINotifier.Notify(filepath.Base(filePath), target)
-	}
 }
 
 // scanAndRegisterManualFiles 扫描用户手动放入的文件

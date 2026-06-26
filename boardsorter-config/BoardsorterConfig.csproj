@@ -13,8 +13,10 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.0.0" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.0" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.0.0" />
-    <PackageReference Include="ClassIsland.Shared.IPC" Version="2.0.4" />
     <PackageReference Include="FluentAvaloniaUI" Version="2.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

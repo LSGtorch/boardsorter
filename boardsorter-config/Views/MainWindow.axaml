@@ -8,7 +8,8 @@
         x:Class="BoardsorterConfig.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Width="950" Height="650"
-        Title="Boardsorter 配置">
+        Title="Boardsorter 配置"
+        FontFamily="Source Han Sans SC,思源黑体,Microsoft YaHei">
     <Window.Styles>
         <Style Selector="DataGrid">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
@@ -25,6 +26,10 @@
         <Style Selector="TextBlock.header">
             <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="TextBlock.desc">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="FontSize" Value="11" />
         </Style>
     </Window.Styles>
     <DockPanel>
@@ -92,15 +97,13 @@
                         <TextBlock Text="开机自启动" FontWeight="Bold" />
                         <CheckBox Content="启用任务管理器启动项 (HKCU\...\Run)"
                                   IsChecked="{Binding AutoStart}" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                   Text="任务管理器 → 启动 Tab 中可以看到本项，可在那里直接禁用/启用" />
+                        <TextBlock Classes="desc" Text="任务管理器 → 启动 Tab 中可以看到本项，可在那里直接禁用/启用" />
 
                         <Separator Margin="0,10,0,0" />
                         <TextBlock Text="开始菜单快捷方式" FontWeight="Bold" Margin="0,10,0,0" />
                         <CheckBox Content="在开始菜单创建快捷方式"
                                   IsChecked="{Binding StartMenuShortcut}" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                   Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk" />
+                        <TextBlock Classes="desc" Text="快捷方式位于: %APPDATA%\Microsoft\Windows\Start Menu\Programs\boardsorter.lnk" />
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Content="创建开始菜单快捷方式" Command="{Binding CreateStartMenuCommand}" />
@@ -110,18 +113,17 @@
                         <Separator Margin="0,10,0,0" />
                         <TextBlock Text="IPC 端口" FontWeight="Bold" Margin="0,10,0,0" />
                         <TextBox Text="{Binding IpcPort}" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                   Text="0 表示使用随机端口 (59812-59820)，写回 data/ipc.json" />
+                        <TextBlock Classes="desc" Text="0 表示使用随机端口 (59812-59820)，写回 data/ipc.json" />
 
                         <Button Content="保存" Command="{Binding SaveConfigCommand}"
                                 HorizontalAlignment="Left" Margin="0,10,0,0" />
-                        <TextBlock Text="{Binding LastActivity}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="0,4,0,0" />
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Page3: 词条库（合并规则 + 科目筛选 + 词条检索文件） -->
-                <DockPanel x:Name="Page3" Margin="8" IsVisible="False">
-                    <StackPanel DockPanel.Dock="Top" Spacing="6">
+                <!-- Page3: 词条库（精确高度布局，避免右侧溢出） -->
+                <Grid x:Name="Page3" Margin="8" IsVisible="False"
+                      RowDefinitions="Auto,*,Auto,Auto,Auto,*">
+                    <StackPanel Grid.Row="0" Spacing="6">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBox Text="{Binding TermQuery}" Width="180" Watermark="搜索词条" />
                             <ComboBox ItemsSource="{Binding SubjectOptions}" 
@@ -130,54 +132,66 @@
                             <Button Content="刷新" Command="{Binding RefreshTermsCommand}" />
                             <CheckBox Content="自动刷新" IsChecked="{Binding AutoRefresh}" VerticalAlignment="Center" />
                         </StackPanel>
-
                         <TextBlock Text="词条列表（点击词条查看关联文件）" FontWeight="Bold" Margin="0,4,0,2" />
                     </StackPanel>
 
-                    <Grid RowDefinitions="Auto,*,Auto,*">
-                        <!-- 词条列表 -->
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding Terms}" 
-                                  SelectedItem="{Binding SelectedTerm}"
-                                  AutoGenerateColumns="False" MaxHeight="200">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="词条" Binding="{Binding Term}" Width="*" />
-                                <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
-                                <DataGridTextColumn Header="次数" Binding="{Binding Count}" Width="80" />
-                            </DataGrid.Columns>
-                        </DataGrid>
+                    <!-- 词条列表 -->
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Terms}" 
+                              SelectedItem="{Binding SelectedTerm}"
+                              AutoGenerateColumns="False"
+                              MaxHeight="200">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="词条" Binding="{Binding Term}" Width="*" />
+                            <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
+                            <DataGridTextColumn Header="次数" Binding="{Binding Count}" Width="80" />
+                        </DataGrid.Columns>
+                    </DataGrid>
 
-                        <!-- 选中词条关联的文件 -->
-                        <TextBlock Grid.Row="2" Text="关联文件" FontWeight="Bold" Margin="0,8,0,4" />
-                        <DataGrid Grid.Row="3" ItemsSource="{Binding TermFiles}" AutoGenerateColumns="False" MaxHeight="150">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
-                                <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
-                                <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="80" />
-                                <DataGridTextColumn Header="修改时间" Binding="{Binding ModifiedAt}" Width="140" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Grid>
+                    <TextBlock Grid.Row="2" Text="关联文件（双击行打开文件）" FontWeight="Bold" Margin="0,8,0,4" />
 
-                    <Separator DockPanel.Dock="Bottom" Margin="0,8" />
+                    <!-- 选中词条关联的文件 -->
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding TermFiles}" AutoGenerateColumns="False"
+                              MaxHeight="150">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
+                            <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="80" />
+                            <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="70" />
+                            <DataGridTemplateColumn Header="操作" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="models:FileMeta">
+                                        <Button Content="打开"
+                                                Command="{Binding $parent[DataGrid].DataContext.OpenFileCommand}"
+                                                CommandParameter="{Binding Path}"
+                                                x:CompileBindings="False" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
 
-                    <Expander DockPanel.Dock="Bottom" Header="手动规则（与词条功能类似，可手动配置模式匹配）"
-                              IsExpanded="False" Margin="0,0,0,4">
-                        <StackPanel Spacing="4">
-                            <DataGrid ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" AutoGenerateColumns="False" Height="140">
+                    <Separator Grid.Row="4" Margin="0,6" />
+
+                    <!-- 手动规则（折叠展开） -->
+                    <Expander Grid.Row="5" Header="手动规则（与词条功能类似，可手动配置模式匹配）"
+                              IsExpanded="False">
+                        <Grid RowDefinitions="*,Auto" Height="160">
+                            <DataGrid Grid.Row="0" ItemsSource="{Binding Rules}" 
+                                      SelectedItem="{Binding SelectedRule}" 
+                                      AutoGenerateColumns="False">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="模式" Binding="{Binding Pattern}" Width="*" />
                                     <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
                                     <DataGridTextColumn Header="优先级" Binding="{Binding Priority}" Width="80" />
                                 </DataGrid.Columns>
                             </DataGrid>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                                 <Button Content="新增规则" Command="{Binding AddRuleCommand}" />
                                 <Button Content="删除选中" Command="{Binding RemoveSelectedRuleCommand}" />
                                 <Button Content="保存" Command="{Binding SaveConfigCommand}" />
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Expander>
-                </DockPanel>
+                </Grid>
 
                 <!-- Page4: 文件元数据 -->
                 <DockPanel x:Name="Page4" Margin="8" IsVisible="False">
@@ -193,6 +207,16 @@
                             <DataGridTextColumn Header="学科" Binding="{Binding Subject}" Width="100" />
                             <DataGridTextColumn Header="大小" Binding="{Binding Size}" Width="80" />
                             <DataGridTextColumn Header="修改时间" Binding="{Binding ModifiedAt}" Width="140" />
+                            <DataGridTemplateColumn Header="操作" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="models:FileMeta">
+                                        <Button Content="打开"
+                                                Command="{Binding $parent[DataGrid].DataContext.OpenFileCommand}"
+                                                CommandParameter="{Binding Path}"
+                                                x:CompileBindings="False" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
@@ -207,7 +231,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="models:LogEntry">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding Time}" Width="140" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                    <TextBlock Text="{Binding Time}" Width="140" />
                                     <TextBlock Text="{Binding Level}" Width="60" FontWeight="Bold" />
                                     <TextBlock Text="{Binding Message}" />
                                 </StackPanel>
@@ -221,21 +245,17 @@
                     <StackPanel Spacing="10" Margin="8">
                         <TextBlock Text="外观" Classes="header" />
                         <CheckBox Content="深色模式" IsChecked="{Binding DarkMode}" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                   Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
+                        <TextBlock Classes="desc" Text="切换后立即生效，设置保存在 config.ini 的 [UI配置] 节中" />
                         <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Page7: 通知（原名 ClassIsland） -->
+                <!-- Page7: 通知 -->
                 <ScrollViewer x:Name="Page7" IsVisible="False">
                     <StackPanel Spacing="10" Margin="8">
                         <TextBlock Text="文件分类通知" Classes="header" />
-                        <CheckBox Content="启用文件分类通知" IsChecked="{Binding ClassIslandNotifyEnabled}" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="11"
-                                   Text="文件被分类后，通过 Windows 原生 Toast 通知推送。不需要 ClassIsland 在后台运行即可收到通知。" />
-                        <TextBlock Text="连接状态: " FontWeight="Bold" />
-                        <TextBlock Text="{Binding ClassIslandStatus}" Margin="10,0,0,0" />
+                        <CheckBox Content="启用文件分类通知" IsChecked="{Binding NotifyEnabled}" />
+                        <TextBlock Classes="desc" Text="文件被分类后，通过 Windows 原生 Toast 通知推送。" />
                         <Button Content="保存设置" Command="{Binding SaveConfigCommand}" HorizontalAlignment="Left" Margin="0,10,0,0" />
                     </StackPanel>
                 </ScrollViewer>

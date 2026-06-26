@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,8 +23,41 @@ var (
 	ipcLog        *Logger
 	ipcMonitor    *Monitor
 	ipcDelDeleter *DelayedDeleter
-	ipcCINotifier *ClassIslandNotifier
 )
+
+// ============== 通知队列 ==============
+//
+// 文件被分类后，classifier 向此队列推送一条通知；GUI 端轮询 GetNotifications
+// 并调用 Windows Toast 显示。纯内存队列，重启丢失。
+
+type FileNotification struct {
+	FileName string `json:"file_name"`
+	Subject  string `json:"subject"`
+}
+
+var (
+	notifMu     sync.Mutex
+	notifQueue  []FileNotification
+)
+
+// PushNotification 向队列追加一条通知（供 classifier 调用）
+func PushNotification(fileName, subject string) {
+	notifMu.Lock()
+	defer notifMu.Unlock()
+	notifQueue = append(notifQueue, FileNotification{FileName: fileName, Subject: subject})
+}
+
+// popNotifications 取出并清空队列
+func popNotifications() []FileNotification {
+	notifMu.Lock()
+	defer notifMu.Unlock()
+	if len(notifQueue) == 0 {
+		return nil
+	}
+	out := notifQueue
+	notifQueue = nil
+	return out
+}
 
 // 辅助函数占位：实际实现由 main.go 在 init() 中赋值
 //   - triggerManualScan: 触发一次手动扫描，返回扫描到的文件数
@@ -85,7 +119,6 @@ func StartIPCServer(
 	log *Logger,
 	monitor *Monitor,
 	deleter *DelayedDeleter,
-	ciNotifier *ClassIslandNotifier,
 	onStopCb func(),
 ) (int, error) {
 	ipcConfig = cfg
@@ -95,7 +128,6 @@ func StartIPCServer(
 	ipcLog = log
 	ipcMonitor = monitor
 	ipcDelDeleter = deleter
-	ipcCINotifier = ciNotifier
 	if onStopCb != nil {
 		onStop = onStopCb
 	}
@@ -114,7 +146,7 @@ func StartIPCServer(
 	mux.HandleFunc("/api/decay", corsHandler(handleDecay))
 	mux.HandleFunc("/api/stop", corsHandler(handleStop))
 	mux.HandleFunc("/api/system/startmenu", corsHandler(handleSystemStartMenu))
-	mux.HandleFunc("/api/classisland/notifications", corsHandler(handleClassIslandNotifications))
+	mux.HandleFunc("/api/notifications", corsHandler(handleNotifications))
 
 	// 顺序尝试候选端口
 	var listener net.Listener
@@ -235,10 +267,9 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 //   RuleItem      { Pattern, Subject, Priority }
 
 type IPCConfig struct {
-	Monitor     IPCMonitorConfig     `json:"Monitor"`
-	AI          IPCAIConfig          `json:"AI"`
-	Startup     IPCStartupConfig     `json:"Startup"`
-	ClassIsland IPCClassIslandConfig `json:"ClassIsland"`
+	Monitor IPCMonitorConfig `json:"Monitor"`
+	AI      IPCAIConfig      `json:"AI"`
+	Startup IPCStartupConfig `json:"Startup"`
 }
 
 type IPCMonitorConfig struct {
@@ -269,12 +300,6 @@ type IPCStartupConfig struct {
 	DarkMode          bool `json:"DarkMode"`
 }
 
-type IPCClassIslandConfig struct {
-	NotifyEnabled  bool   `json:"NotifyEnabled"`
-	NotifyURL      string `json:"NotifyURL"`
-	NotifyTemplate string `json:"NotifyTemplate"`
-}
-
 // configToIPC 把 Go Config 转换成 IPC 结构，敏感字段打码。
 func configToIPC(c *Config) IPCConfig {
 	out := IPCConfig{
@@ -296,11 +321,6 @@ func configToIPC(c *Config) IPCConfig {
 			StartMenuShortcut: c.StartMenuLink,
 			IpcPort:           c.IPCPort,
 			DarkMode:          c.DarkMode,
-		},
-		ClassIsland: IPCClassIslandConfig{
-			NotifyEnabled:  c.ClassIslandNotifyEnabled,
-			NotifyURL:      c.ClassIslandNotifyURL,
-			NotifyTemplate: c.ClassIslandNotifyTemplate,
 		},
 	}
 	if out.AI.ApiKey != "" {
@@ -337,9 +357,6 @@ func (c *Config) applyIPC(in IPCConfig) {
 	c.AutoStart = in.Startup.AutoStart
 	c.StartMenuLink = in.Startup.StartMenuShortcut
 	c.DarkMode = in.Startup.DarkMode
-	c.ClassIslandNotifyEnabled = in.ClassIsland.NotifyEnabled
-	c.ClassIslandNotifyURL = in.ClassIsland.NotifyURL
-	c.ClassIslandNotifyTemplate = in.ClassIsland.NotifyTemplate
 	if in.Startup.IpcPort > 0 {
 		c.IPCPort = in.Startup.IpcPort
 	}
@@ -381,11 +398,6 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		ipcConfig.applyIPC(newIPCCfg)
 		ipcConfig.ReadableExtList = parseExtList(ipcConfig.ReadableExts)
 		ipcConfig.ArchiveExtList = parseExtList(ipcConfig.ArchiveExts)
-
-		// 同步 ClassIsland 通知器状态
-		if ipcCINotifier != nil {
-			ipcCINotifier.SetEnabled(ipcConfig.ClassIslandNotifyEnabled)
-		}
 
 		// 若监控目录变化则重启 Monitor
 		if ipcConfig.WatchFolder != oldWatch && ipcLog != nil {
@@ -503,14 +515,26 @@ func handleFilesList(w http.ResponseWriter, r *http.Request) {
 	var termFileUUIDs map[string]bool
 	if term != "" {
 		termFileUUIDs = make(map[string]bool)
-		termLower := strings.ToLower(term)
 		if ipcTermDB != nil {
 			allTerms := ipcTermDB.GetAllTerms()
+			termLower := strings.ToLower(term)
+			subjectLower := strings.ToLower(subject)
 			for t, subjectMap := range allTerms {
-				if !strings.Contains(strings.ToLower(t), termLower) {
-					continue
+				// 如果同时指定了 subject，则精确匹配 term（点击词条场景）
+				// 如果只指定了 term，则模糊搜索（搜索词条场景）
+				if subject != "" {
+					if strings.ToLower(t) != termLower {
+						continue
+					}
+				} else {
+					if !strings.Contains(strings.ToLower(t), termLower) {
+						continue
+					}
 				}
-				for _, info := range subjectMap {
+				for subj, info := range subjectMap {
+					if subject != "" && strings.ToLower(subj) != subjectLower {
+						continue
+					}
 					for _, uuid := range info.MatchedFiles {
 						termFileUUIDs[uuid] = true
 					}
@@ -767,19 +791,13 @@ func handleSystemStartMenu(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
 }
 
-// GET /api/classisland/notifications — 取出待发送通知
-func handleClassIslandNotifications(w http.ResponseWriter, r *http.Request) {
+// GET /api/notifications
+// 返回待发送的 Windows Toast 通知队列（获取后清空）
+func handleNotifications(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if ipcCINotifier == nil {
-		writeOK(w, []ClassIslandNotification{})
-		return
-	}
-	notifications := ipcCINotifier.Drain()
-	if notifications == nil {
-		notifications = []ClassIslandNotification{}
-	}
-	writeOK(w, notifications)
+	notifs := popNotifications()
+	writeOK(w, notifs)
 }

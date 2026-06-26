@@ -71,19 +71,10 @@ func runConsole(execDir string, noIPC bool) {
 	if noIPC {
 		select {}
 	}
-	log.Info("启动系统托盘（点 X 关闭窗口后服务仍在托盘运行）")
-	runTray(func() {
-		log.Info("托盘退出信号...")
-		if appMonitor != nil {
-			appMonitor.Stop()
-		}
-		if appDelDeleter != nil {
-			appDelDeleter.Stop()
-		}
-		log.Info("程序已退出")
-		time.Sleep(300 * time.Millisecond)
-		os.Exit(0)
-	})
+	log.Info("服务运行中，按 Ctrl+C 退出")
+	// 由于 Go 端无托盘，GUI 程序负责管理生命周期
+	// 使用 select{} 保持进程存活；退出由 /api/stop 或外部信号控制
+	select {}
 }
 
 func initSystem(execDir string) (*Config, *Logger) {
@@ -277,8 +268,7 @@ func startServer(cfg *Config, log *Logger, noIPC bool) {
 		time.Sleep(500 * time.Millisecond)
 		os.Exit(0)
 	}
-	ciNotifier := NewClassIslandNotifier(cfg.ClassIslandNotifyEnabled)
-	port, err := StartIPCServer(cfg, termDB, metadata, class, log, mon, delDeleter, ciNotifier, onStop)
+	port, err := StartIPCServer(cfg, termDB, metadata, class, log, mon, delDeleter, onStop)
 	if err != nil {
 		log.Error("启动IPC服务失败: %v", err)
 	} else {

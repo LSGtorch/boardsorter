@@ -3,12 +3,13 @@ using System.Text.Json.Serialization;
 
 namespace BoardsorterConfig.Models;
 
+// ========== Config API 模型 ==========
+
 public class ConfigModel
 {
     public MonitorConfig Monitor { get; set; } = new();
     public AIConfig AI { get; set; } = new();
     public StartupConfig Startup { get; set; } = new();
-    public ClassIslandConfig ClassIsland { get; set; } = new();
 }
 
 public class MonitorConfig
@@ -43,28 +44,7 @@ public class StartupConfig
     public bool DarkMode { get; set; }
 }
 
-public class ClassIslandConfig
-{
-    public bool NotifyEnabled { get; set; }
-    public string NotifyURL { get; set; } = "";
-    public string NotifyTemplate { get; set; } = "";
-}
-
-public class ClassIslandNotification
-{
-    public string Time { get; set; } = "";
-    public string FileName { get; set; } = "";
-    public string Subject { get; set; } = "";
-}
-
-public class ClassIslandState
-{
-    public bool Connected { get; set; }
-    public string CurrentClass { get; set; } = "";
-    public string NextClass { get; set; } = "";
-    public string ProfilePath { get; set; } = "";
-    public string Error { get; set; } = "";
-}
+// ========== 词条库模型 ==========
 
 public class TermEntry
 {
@@ -73,21 +53,29 @@ public class TermEntry
     public int Count { get; set; }
 }
 
+// ========== 文件元数据模型 ==========
+
 public class FileMeta
 {
-    [JsonPropertyName("path")]
     public string Path { get; set; } = "";
-    [JsonPropertyName("subject")]
     public string Subject { get; set; } = "";
-    [JsonPropertyName("size")]
     public long Size { get; set; }
-    [JsonPropertyName("modified_at")]
     public string ModifiedAt { get; set; } = "";
 }
+
+// ========== 日志模型 ==========
 
 public class LogEntry
 {
     public string Time { get; set; } = "";
     public string Level { get; set; } = "";
     public string Message { get; set; } = "";
+}
+
+// ========== 通知模型 ==========
+
+public class ClassIslandNotification
+{
+    public string FileName { get; set; } = "";
+    public string Subject { get; set; } = "";
 }

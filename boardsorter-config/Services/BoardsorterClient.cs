@@ -240,9 +240,9 @@ public class BoardsorterClient
         }
     }
 
-    public async Task<List<FileMeta>> SearchFilesByTermAsync(string term)
+    public async Task<List<FileMeta>> SearchFilesByTermAsync(string term, string subject = "")
     {
-        return await ListFilesAsync("", term);
+        return await ListFilesAsync(subject, term);
     }
 
     private class FileListResponse
@@ -327,7 +327,7 @@ public class BoardsorterClient
     {
         try
         {
-            var data = await GetDataAsync<List<ClassIslandNotification>>($"{BaseUrl}/api/classisland/notifications");
+            var data = await GetDataAsync<List<ClassIslandNotification>>($"{BaseUrl}/api/notifications");
             return data ?? new List<ClassIslandNotification>();
         }
         catch (Exception ex)
