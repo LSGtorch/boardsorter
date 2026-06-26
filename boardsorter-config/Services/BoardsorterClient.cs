@@ -158,7 +158,8 @@ public class BoardsorterClient
         {
             var json = JsonSerializer.Serialize(cfg, new JsonSerializerOptions
             {
-                WriteIndented = false
+                WriteIndented = false,
+                PropertyNamingPolicy = null // 保持 PascalCase 以匹配 Go 端的 json tag
             });
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var resp = await _http.PostAsync($"{BaseUrl}/api/config", content);
