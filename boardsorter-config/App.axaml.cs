@@ -13,6 +13,7 @@ public partial class App : Application
 {
     private MainWindow? _mainWindow;
     private TrayIcon? _trayIcon;
+    private EventHandler<WindowClosingEventArgs>? _mainWindowClosingHandler;
 
     public override void Initialize()
     {
@@ -29,11 +30,12 @@ public partial class App : Application
             SetupTrayIcon();
 
             // 点击关闭按钮时隐藏到托盘而非退出
-            _mainWindow.Closing += (sender, args) =>
-            {
-                args.Cancel = true;
-                _mainWindow.Hide();
-            };
+        _mainWindowClosingHandler = (sender, args) =>
+        {
+            args.Cancel = true;
+            _mainWindow!.Hide();
+        };
+        _mainWindow.Closing += _mainWindowClosingHandler;
 
             // 点击托盘图标显示窗口
             _trayIcon!.Clicked += (sender, args) =>
@@ -82,9 +84,14 @@ public partial class App : Application
         var exitItem = new NativeMenuItem("退出");
         exitItem.Click += (_, _) =>
         {
+            if (_trayIcon != null)
+            {
+                _trayIcon.Dispose();
+                _trayIcon = null;
+            }
             if (_mainWindow != null)
             {
-                _mainWindow.Closing -= null;
+                _mainWindow.Closing -= _mainWindowClosingHandler;
             }
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desk)
             {

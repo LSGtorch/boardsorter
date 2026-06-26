@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using System.Threading;
+
 using Avalonia;
 using Avalonia.Media;
 
@@ -8,27 +8,40 @@ namespace BoardsorterConfig;
 
 internal static class Program
 {
-    private static Mutex? _mutex;
-
     [STAThread]
     public static void Main(string[] args)
     {
         // 全局异常捕获 - 写入日志文件
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
-            var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-            File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Unhandled: {e.ExceptionObject}");
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Unhandled: {e.ExceptionObject}");
+            }
+            catch { }
         };
 
         try
         {
+            // 启动时写入启动日志（帮助排查打不开的问题）
+            var launchLog = Path.Combine(AppContext.BaseDirectory, "launch.log");
+            File.WriteAllText(launchLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Starting BoardsorterConfig...\n");
+            File.AppendAllText(launchLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] IsSingleFile: {string.IsNullOrEmpty(Environment.GetCommandLineArgs()[0])}\n");
+            File.AppendAllText(launchLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] BaseDir: {AppContext.BaseDirectory}\n");
+
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+
+            File.AppendAllText(launchLog, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Exited normally\n");
         }
         catch (Exception ex)
         {
-            var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-            File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}");
-            throw;
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}");
+            }
+            catch { }
         }
     }
 
