@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using Avalonia;
 using Avalonia.Media;
@@ -12,22 +13,22 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // 防止重复启动 GUI
-        _mutex = new Mutex(true, "BoardsorterConfig_UI_SingleInstance", out bool createdNew);
-        if (!createdNew)
+        // 全局异常捕获 - 写入日志文件
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
-            // 已有实例在运行，直接退出
-            return;
-        }
+            var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+            File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Unhandled: {e.ExceptionObject}");
+        };
 
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
-        finally
+        catch (Exception ex)
         {
-            _mutex?.ReleaseMutex();
-            _mutex?.Dispose();
+            var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+            File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}");
+            throw;
         }
     }
 
